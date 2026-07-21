@@ -1,6 +1,6 @@
 """Tests for project configuration."""
 
-from config import ARTICLE_COLUMNS, NEWS_SOURCES, NLP_FUNCTIONS
+from config import ARTICLE_COLUMNS, NEWS_SOURCES, NLP_FUNCTIONS_FULL, NLP_FUNCTIONS_LIGHT
 
 
 def test_news_sources_have_required_keys():
@@ -18,7 +18,9 @@ def test_unian_uses_ukrainian_feed():
 
 
 def test_nlp_functions_include_core_features():
-    expected = {
+    from config import NLP_FUNCTIONS_FULL, NLP_FUNCTIONS_LIGHT
+
+    expected_full = {
         "Вступ",
         "Огляд статей",
         "Уніграми",
@@ -27,7 +29,9 @@ def test_nlp_functions_include_core_features():
         "Порівняння медіа",
         "Сумаризація",
     }
-    assert expected.issubset(set(NLP_FUNCTIONS))
+    assert expected_full.issubset(set(NLP_FUNCTIONS_FULL))
+    assert "Тональність (RoBERTa)" not in NLP_FUNCTIONS_LIGHT
+    assert "Тональність (новини)" in NLP_FUNCTIONS_LIGHT
 
 
 def test_article_columns_schema():

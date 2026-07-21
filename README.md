@@ -257,81 +257,48 @@ Weekly scraper health check (`.github/workflows/scraper-health.yml`) — live RS
 
 ## Деплой на Streamlit Community Cloud
 
-
-
 ### Передумови
 
+- Публічний репозиторій: https://github.com/prostir06/UkrMediaNLP
+- Обліковий запис [share.streamlit.io](https://share.streamlit.io)
 
+### Рекомендовано (free tier / light)
 
-- Публічний репозиторій на GitHub
+1. **New app** → repo `prostir06/UkrMediaNLP`, branch `main`
+2. **Main file path:** `streamlit_app.py`
+3. **Advanced settings → Python requirements file:** `requirements-cloud.txt`
+4. Deploy
 
-- Обліковий запис [Streamlit Cloud](https://share.streamlit.io)
+`requirements-cloud.txt` **без** torch/transformers (~менше RAM). Sidebar автоматично ховає RoBERTa/емоції, якщо `transformers` відсутній. Доступні: огляд, n-грами, NER, POS, LDA, «Тональність (новини)», сумаризація, порівняння медіа.
 
+Системний пакет `packages.txt` (`fonts-dejavu-core`) підхоплюється автоматично для хмари слів.
 
+### Повний NLP (transformers)
 
-### Кроки
+Лише якщо у Cloud достатньо RAM, або краще **Docker** (2 GB+):
 
-
-
-1. **New app** → підключити GitHub repo
-
-2. **Branch:** `main`
-
-3. **Main file path:** `streamlit_app.py`
-
-4. **App URL:** обрати унікальний slug
-
-5. **Deploy**
-
-
-
-Streamlit Cloud автоматично використовує:
-
-
-
-| Файл | Призначення |
-
-|------|-------------|
-
-| `requirements.txt` | Python-залежності (torch CPU, spaCy, transformers) |
-
-| `packages.txt` | `fonts-dejavu-core` для хмари слів |
-
-| `.streamlit/config.toml` | headless mode, без telemetry |
-
-
+- Requirements file: `requirements.txt` (CPU torch + transformers)
+- Або локально / VPS: `docker compose up --build`
 
 ### Секрети
 
+Не потрібні. RSS публічні. Опційно в Secrets:
 
+```toml
+LIGHT_CLOUD = "1"
+```
 
-Цей проєкт **не потребує** API keys або `.streamlit/secrets.toml`. Усі RSS-джерела публічні.
+(для явного light-режиму навіть з повним `requirements.txt` — потрібна підтримка через env; надійніше використовувати `requirements-cloud.txt`).
 
-
-
-### Обмеження Streamlit Cloud (free tier)
-
-
+### Обмеження free tier
 
 | Ресурс | Ліміт | Вплив |
-
 |--------|-------|-------|
+| RAM | ~1 GB | Повний torch+HF часто OOM |
+| Disk | Ephemeral | Моделі качаються на cold start |
+| CPU | Shared | Scrape 50 статей ~15–30 с |
 
-| RAM | ~1 GB | Тональність/емоції (transformers) можуть не вміститись |
-
-| CPU | Shared | Перший scrape 50 статей ~15–30 с |
-
-| Disk | Ephemeral | HF-моделі завантажуються при cold start |
-
-
-
-**Рекомендації для Cloud:**
-
-
-
-- Почніть з функцій без transformers: огляд статей, n-грами, NER, POS, LDA
-
-- Тональність/емоції — для Docker/VPS (2 GB+ RAM) або локально
+---
 
 - При OOM Streamlit покаже помилку в UI; перезапустіть app або оберіть легшу функцію
 

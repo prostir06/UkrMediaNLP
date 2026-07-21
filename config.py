@@ -99,8 +99,21 @@ NEWS_SOURCES = {
     },
 }
 
-# When true (or LIGHT_CLOUD=1), hide transformer-heavy sidebar functions.
-CLOUD_LIGHT_MODE = os.environ.get("LIGHT_CLOUD", "").lower() in {"1", "true", "yes"}
+def _transformers_available() -> bool:
+    """Return True when the transformers package is importable."""
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("transformers") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+# Light UI when LIGHT_CLOUD=1 or when transformers is not installed (Cloud light deps).
+CLOUD_LIGHT_MODE = (
+    os.environ.get("LIGHT_CLOUD", "").lower() in {"1", "true", "yes"}
+    or not _transformers_available()
+)
 
 NLP_FUNCTIONS_FULL = [
     "Вступ",

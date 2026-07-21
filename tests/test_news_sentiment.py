@@ -27,3 +27,18 @@ def test_batch_and_score():
     labels = classify_news_sentiment_batch(["успіх", "атака"])
     assert labels == ["Позитивна", "Негативна"]
     assert headline_polarity_score("атака") < 0
+
+
+def test_classify_handles_none_and_empty():
+    assert classify_news_sentiment(None) == "Нейтральна"  # type: ignore[arg-type]
+    assert classify_news_sentiment("") == "Нейтральна"
+
+
+def test_batch_handles_empty_input():
+    assert classify_news_sentiment_batch(None) == []  # type: ignore[arg-type]
+    assert classify_news_sentiment_batch([]) == []
+
+
+def test_polarity_score_empty():
+    assert headline_polarity_score("") == 0.0
+    assert headline_polarity_score(None) == 0.0  # type: ignore[arg-type]
