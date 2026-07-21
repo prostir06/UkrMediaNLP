@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Тестовий канал</title>
+    <link>https://example.com</link>
+    <description>Fixture RSS feed</description>
+    <item>
+      <title><![CDATA[Президент України виступив у Києві]]></title>
+      <description><![CDATA[<p>Короткий опис новини для тесту.</p>]]></description>
+      <link>https://example.com/news/1</link>
+      <pubDate>Tue, 21 Jul 2026 12:00:00 +0300</pubDate>
+      <category>Політика</category>
+    </item>
+    <item>
+      <title>Друга тестова новина</title>
+      <description>Опис без HTML.</description>
+      <link>https://example.com/news/2</link>
+      <pubDate>Tue, 21 Jul 2026 11:00:00 +0300</pubDate>
+      <category>Економіка</category>
+    </item>
+  </channel>
+</rss>

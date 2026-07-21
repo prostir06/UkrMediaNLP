@@ -1,0 +1,14 @@
+[run]
+omit =
+    tests/*
+    scripts/*
+    streamlit_app.py
+    app.py
+    ui/*
+    nlp/wordcloud_render.py
+    nlp_analysis.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

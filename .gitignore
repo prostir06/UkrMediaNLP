@@ -1,0 +1,42 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.env
+.venv/
+venv/
+env/
+
+# Test / lint / coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Streamlit (never commit secrets)
+.streamlit/secrets.toml
+
+# Caches and model downloads
+.cache/
+.huggingface/
+**/.cache/huggingface/
+.cache/articles/
+
+# IDE / editor
+.idea/
+.vscode/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Local scratch
+Новий Текстовий документ.txt
