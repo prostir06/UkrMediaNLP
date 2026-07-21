@@ -148,39 +148,44 @@ streamlit run streamlit_app.py
 
 ## Docker
 
-
-
 ```bash
-
 docker compose up --build
-
 ```
-
-
 
 Додаток: http://localhost:8501
 
+Preload моделей при старті контейнера:
 
+```bash
+docker compose build --build-arg PRELOAD_MODELS=true
+docker compose up
+```
+
+Nginx reverse proxy (profile `with-nginx`):
+
+```bash
+docker compose --profile with-nginx up --build
+```
 
 > Моделі transformers (~1 GB) завантажуються при першому використанні тональності/емоцій. Volume `hf_cache` зберігає кеш між перезапусками.
 
+### Streamlit Cloud (light)
 
+Використовуйте `requirements-cloud.txt` (без torch) і змінну `LIGHT_CLOUD=1`, щоб приховати RoBERTa/емоції. Доступні n-грами, NER, LDA та «Тональність (новини)».
 
 ---
 
-
-
 ## Публікація на GitHub
-
-
 
 ### 1. Ініціалізація репозиторію
 
-
+Локальний initial commit уже створено на гілці `main`. Далі:
 
 ```bash
-
 cd UkrMediaNLP
+git remote add origin https://github.com/YOUR_USERNAME/UkrMediaNLP.git
+git push -u origin main
+```
 
 git init
 
