@@ -28,17 +28,18 @@ def extract_keywords(
     Returns:
         List of (keyword, frequency) tuples.
     """
-    if not texts:
+    if texts is None or len(texts) == 0:
         return []
 
     stopwords = single_token_stopwords()
     counter: Counter[str] = Counter()
 
     for text in texts:
-        if not text or not isinstance(text, str):
+        text_str = str(text or "").strip()
+        if not text_str:
             continue
 
-        words = re.findall(UKRAINIAN_TOKEN_PATTERN, text.lower(), flags=re.UNICODE)
+        words = re.findall(UKRAINIAN_TOKEN_PATTERN, text_str.lower(), flags=re.UNICODE)
         filtered = [
             word for word in words
             if len(word) >= min_word_len and word not in stopwords and not word.isdigit()
@@ -46,3 +47,4 @@ def extract_keywords(
         counter.update(filtered)
 
     return counter.most_common(top_n)
+

@@ -280,7 +280,7 @@ def classify_sentiment_cosmus(text: str) -> str:
 
 
 def classify_sentiment_batch(texts: list[str]) -> list[str]:
-    if not texts:
+    if texts is None or len(texts) == 0:
         return []
     try:
         classifier = _get_cosmus_pipeline()
@@ -314,8 +314,9 @@ def _probs_to_emotions(probs: list[float], id2label: dict) -> tuple[list[str], s
 
 def classify_emotions_batch(texts: list[str]) -> list[tuple[list[str], str]]:
     """Batched emotion inference — one forward pass per batch."""
-    if not texts:
+    if texts is None or len(texts) == 0:
         return []
+
 
     tokenizer, model, torch = _get_emotions_model()
     truncated = [_truncate(text) for text in texts]

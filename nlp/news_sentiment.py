@@ -84,8 +84,9 @@ def classify_news_sentiment(text: str) -> str:
 
 def classify_news_sentiment_batch(texts: list[str] | None) -> list[str]:
     """Classify many headlines; empty/invalid input yields an empty list."""
-    if not texts:
+    if texts is None or len(texts) == 0:
         return []
+
     try:
         return [classify_news_sentiment(text) for text in texts]
     except TypeError as exc:
