@@ -13,19 +13,16 @@ Streamlit-додаток для збору новин з RSS українськ�
 - **Паралельний скрейпінг** (до 50 статей, 3 workers, rate limit 1 req/s) + SQLite TTL-кеш
 - **NLP-аналіз українською:**
   - уніграми, біграми, триграми (з lemmatization)
-  - ключові слова та хмара слів (лемми)
-  - статистика тексту
-  - NER (spaCy, за замовчуванням по контенту)
-  - частини мови
-  - тематичне моделювання (LDA)
-  - тональність (RoBERTa-COSMUS / емоції / news lexicon)
-  - екстрактивна сумаризація (LexRank)
-  - порівняння медіа (уніграми + news-sentiment)
+  - ключові слова та хмара слів (контрастна палітра)
+  - статистика тексту, NER, POS, LDA, сумаризація
+  - тональність (новини) — завжди; RoBERTa / емоції — лише з `ALLOW_HEAVY_NLP=1`
+  - порівняння медіа
 
 ## Структура проєкту
 
 ```
 ├── streamlit_app.py        # Entry point для Streamlit Cloud
+├── runtime_env.py          # HF/torch defaults (ALLOW_HEAVY_NLP=0)
 ├── app.py                  # Streamlit UI
 ├── ui/                     # renderers.py, charts.py
 ├── cache.py                # Thin wrappers (моделі + load_articles → SQLite)
@@ -41,12 +38,11 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── data/stopwords_uk.txt   # Українські стоп-слова
 ├── requirements.txt        # Повний NLP (CPU torch)
 ├── requirements-cloud.txt  # Light Cloud (без torch)
-├── packages.txt            # Системні пакети для Streamlit Cloud
-├── tests/                  # pytest (~186 тестів)
-├── Dockerfile              # Multi-stage Docker image
-├── docker-compose.yml      # default + profile spacy-md / with-nginx
+├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
-└── packages.txt            # fonts-dejavu-core для Cloud
+├── tests/                  # pytest (~207 тестів)
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ## Встановлення (локально)
@@ -136,20 +132,32 @@ Weekly scraper health: `.github/workflows/scraper-health.yml`
 2. Repo `prostir06/UkrMediaNLP`, branch `main`
 3. **Main file path:** `streamlit_app.py`
 4. **Advanced → Python requirements file:** `requirements-cloud.txt`
-5. (Опційно) Secrets → `LIGHT_CLOUD = "1"`
-6. Deploy
+5. Deploy (RoBERTa / емоції вимкнені за замовчуванням — стабільний режим)
 
 `packages.txt` і `runtime.txt` (Python 3.12) підхоплюються автоматично.
-Без torch доступні: огляд, n-грами, keywords, wordcloud, NER, POS, LDA, «Тональність (новини)», сумаризація, порівняння медіа.
 
-### Повний NLP
+Доступні: огляд, n-грами, keywords, wordcloud, NER, POS, LDA, «Тональність (новини)», сумаризація, порівняння медіа.
 
-Docker / VPS (2 GB+ RAM) з `requirements.txt` і за потреби `PRELOAD_MODELS=true`.
+### Повний NLP (локально / Docker)
 
-### Секрети
+Потрібно ≥2 GB вільної RAM. Увімкніть важкі моделі явно:
+
+```bash
+# Windows PowerShell
+$env:ALLOW_HEAVY_NLP="1"
+streamlit run streamlit_app.py
+```
+
+Або Docker: `docker compose up --build` (за потреби `PRELOAD_MODELS=true`).
+
+### Секрети (опційно)
 
 ```toml
+# Стабільний Cloud (за замовчуванням і так light)
 LIGHT_CLOUD = "1"
+
+# Увімкнути RoBERTa / емоції (ризик OOM на free tier)
+# ALLOW_HEAVY_NLP = "1"
 ```
 
 ## Підтримувані медіа
@@ -175,6 +183,7 @@ LIGHT_CLOUD = "1"
 | `MAX_POS_ARTICLES` | 10 | Статей для POS-аналізу |
 | `ARTICLE_CACHE_TTL` | 12h | TTL SQLite-кешу статей |
 | `SPACY_MODEL` | `uk_core_news_sm` | spaCy pipeline |
+| `ALLOW_HEAVY_NLP` | `0` | `1` = показати RoBERTa / емоції |
 
 ## Обмеження
 

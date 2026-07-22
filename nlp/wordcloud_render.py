@@ -24,10 +24,38 @@ FONT_CANDIDATES = [
 DEFAULT_STYLE = {
     "background_color": "white",
     "max_words": 5000,
-    "colormap": "Blues",
     "width": 2000,
     "height": 1200,
+    # Prefer color_func over sequential "Blues" — pale ends are unreadable on white.
+    "color_func": None,  # filled at build time via _contrast_color_func
 }
+
+# Dark, saturated hues that stay readable on a white background.
+_CONTRAST_PALETTE = (
+    "rgb(15, 56, 110)",   # deep navy
+    "rgb(0, 90, 100)",    # dark teal
+    "rgb(120, 20, 40)",   # burgundy
+    "rgb(35, 35, 35)",    # near-black
+    "rgb(70, 30, 120)",   # deep purple
+    "rgb(0, 85, 55)",     # forest green
+    "rgb(140, 60, 0)",    # burnt orange
+    "rgb(20, 70, 140)",   # strong blue
+)
+
+
+def _contrast_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
+    """Pick a dark palette color so small words stay visible on white."""
+    try:
+        rng = random_state
+        if rng is None:
+            import random as _random
+
+            idx = _random.randint(0, len(_CONTRAST_PALETTE) - 1)
+        else:
+            idx = int(rng.randint(0, len(_CONTRAST_PALETTE) - 1))
+        return _CONTRAST_PALETTE[idx]
+    except Exception:
+        return _CONTRAST_PALETTE[0]
 
 
 def _resolve_font_path() -> str | None:
@@ -103,11 +131,18 @@ def build_wordcloud_images(
     images = []
     for style in selected:
         try:
+            style_kwargs = dict(style)
+            # Inject contrast palette unless the caller supplied colormap/color_func.
+            if "color_func" not in style_kwargs and "colormap" not in style_kwargs:
+                style_kwargs["color_func"] = _contrast_color_func
+            elif style_kwargs.get("color_func") is None and "colormap" not in style_kwargs:
+                style_kwargs["color_func"] = _contrast_color_func
+
             wordcloud = WordCloud(
                 font_path=font_path,
                 stopwords=stopwords,
                 regexp=UKRAINIAN_TOKEN_PATTERN,
-                **style,
+                **style_kwargs,
             ).generate(long_string)
             images.append(wordcloud.to_array())
         except Exception as exc:

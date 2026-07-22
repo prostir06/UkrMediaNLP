@@ -73,7 +73,7 @@ def get_spacy_nlp():
         ) from exc
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Завантаження моделі тональності (перший раз 5–10 хв)...")
 def get_cosmus_pipeline():
     """Load RoBERTa-COSMUS sentiment pipeline."""
     try:
@@ -90,7 +90,7 @@ def get_cosmus_pipeline():
         ) from exc
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Завантаження моделі емоцій (перший раз 5–10 хв)...")
 def get_emotions_model():
     """Load Ukrainian emotions classifier."""
     try:

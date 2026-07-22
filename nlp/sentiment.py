@@ -11,12 +11,16 @@ We therefore load the tokenizer and architecture from
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 from exceptions import NLPAnalysisError
 
 # Disable Hugging Face Hub file locking to prevent PermissionError in shared/containerized environments.
+# Disable Xet transfers — without hf_xet they warn and often stall for many minutes on first download.
 os.environ.setdefault("HF_HUB_DISABLE_DISK_LOCK", "1")
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +42,7 @@ def _ensure_writable_hf_cache() -> None:
             current_hf_home,
             exc,
         )
-        fallback = Path("/tmp/hf_cache")
+        fallback = Path(tempfile.gettempdir()) / "hf_cache"
         try:
             fallback.mkdir(parents=True, exist_ok=True)
             os.environ["HF_HOME"] = str(fallback)
@@ -135,6 +139,8 @@ def load_cosmus_pipeline():
     ``youscan/ukr-roberta-base`` and overlay the published safetensors weights.
     If the repo is completed later, the direct ``pipeline(model=...)`` path is tried first.
     """
+    _ensure_writable_hf_cache()
+    _require_ram_for_transformers("cosmus_load")
     try:
         from transformers import pipeline
     except ImportError as exc:
@@ -151,7 +157,7 @@ def load_cosmus_pipeline():
             max_length=512,
         )
         if hasattr(pipe, "model"):
-            pipe.model = _quantize_model_if_cpu(pipe.model)
+            pipe.model = _maybe_quantize(pipe.model)
         return pipe
     except Exception as direct_exc:
         logger.info(
@@ -196,8 +202,11 @@ def _build_cosmus_pipeline_from_weights():
             filename=COSMUS_WEIGHTS_FILE,
         )
     except (PermissionError, OSError) as exc:
-        logger.warning("PermissionError loading COSMUS model (%s); retrying with /tmp/hf_cache", exc)
-        tmp_dir = str(Path("/tmp/hf_cache"))
+        logger.warning(
+            "PermissionError loading COSMUS model (%s); retrying with temp HF cache",
+            exc,
+        )
+        tmp_dir = str(Path(tempfile.gettempdir()) / "hf_cache")
         Path(tmp_dir).mkdir(parents=True, exist_ok=True)
         os.environ["HF_HOME"] = tmp_dir
         os.environ["TRANSFORMERS_CACHE"] = tmp_dir
@@ -224,7 +233,7 @@ def _build_cosmus_pipeline_from_weights():
     if unexpected:
         logger.warning("COSMUS weights unexpected keys: %s", unexpected[:8])
 
-    model = _quantize_model_if_cpu(model)
+    model = _maybe_quantize(model)
     model.eval()
     return pipeline(
         "text-classification",
@@ -269,6 +278,76 @@ def _remap_state_dict_keys(state_dict: dict, model_keys) -> dict:
     return best
 
 
+def _available_ram_mb() -> int | None:
+    """Best-effort free physical RAM in MiB (Windows / Linux)."""
+    try:
+        import ctypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MEMORYSTATUSEX()
+        status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.ullAvailPhys // (1024 * 1024))
+    except Exception as exc:
+        logger.debug("Windows RAM probe failed: %s", exc)
+
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except Exception as exc:
+        logger.debug("Linux RAM probe failed: %s", exc)
+    return None
+
+
+def _require_ram_for_transformers(step: str, min_mb: int | None = None) -> None:
+    """
+    Refuse to load heavy models when free RAM is too low.
+
+    Prevents the common failure mode where torch allocates until the OS kills
+    the Streamlit process (browser then shows WebSocket / health ERR_EMPTY_RESPONSE).
+    """
+    threshold = min_mb
+    if threshold is None:
+        try:
+            threshold = int(os.environ.get("MIN_TRANSFORMERS_RAM_MB", "1536"))
+        except ValueError:
+            threshold = 1536
+
+    available = _available_ram_mb()
+    if available is None:
+        logger.debug("RAM check skipped (unavailable)")
+        return
+    if available < threshold:
+        raise NLPAnalysisError(
+            f"Замало вільної RAM для transformers-моделі "
+            f"(~{available} МБ вільно, потрібно ≥{threshold} МБ). "
+            f"Закрийте інші програми або використайте «Тональність (новини)». "
+            f"Якщо сторінка «відвалилась» — перезапустіть: streamlit run streamlit_app.py",
+            step=step,
+        )
+
+
+def _maybe_quantize(model):
+    """Apply CPU INT8 quantization only when QUANTIZE_CPU is explicitly enabled."""
+    if os.environ.get("QUANTIZE_CPU", "0").lower() in {"1", "true", "yes"}:
+        return _quantize_model_if_cpu(model)
+    return model
+
+
 def _quantize_model_if_cpu(model):
     """Apply dynamic INT8 quantization on Linear layers for CPU inference."""
     try:
@@ -288,24 +367,58 @@ def _quantize_model_if_cpu(model):
 
 
 def load_emotions_model():
+    """
+    Load the Ukrainian multi-label emotions classifier.
+
+    First call downloads weights from Hugging Face (often 1–3 minutes).
+    Uses a writable HF cache and optional CPU INT8 quantization.
+    """
+    _ensure_writable_hf_cache()
+    _require_ram_for_transformers("emotions_load")
     try:
+        import gc
+
+        gc.collect()
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+        # Limit thread oversubscription — reduces hangs on Windows / small VMs.
         try:
-            tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
-            model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+            torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
+        except Exception as exc:
+            logger.debug("torch.set_num_threads skipped: %s", exc)
+
+        load_kwargs = {"low_cpu_mem_usage": True}
+
+        def _load_pair():
+            tok = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
+            try:
+                mdl = AutoModelForSequenceClassification.from_pretrained(
+                    EMOTIONS_MODEL,
+                    **load_kwargs,
+                )
+            except Exception as load_exc:
+                logger.debug("low_cpu_mem_usage load failed (%s); retrying plain", load_exc)
+                mdl = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+            return tok, mdl
+
+        try:
+            tokenizer, model = _load_pair()
         except (PermissionError, OSError) as exc:
-            logger.warning("PermissionError loading emotions model (%s); retrying with /tmp/hf_cache", exc)
-            tmp_dir = str(Path("/tmp/hf_cache"))
+            logger.warning(
+                "PermissionError loading emotions model (%s); retrying with temp HF cache",
+                exc,
+            )
+            tmp_dir = str(Path(tempfile.gettempdir()) / "hf_cache")
             Path(tmp_dir).mkdir(parents=True, exist_ok=True)
             os.environ["HF_HOME"] = tmp_dir
             os.environ["TRANSFORMERS_CACHE"] = tmp_dir
             os.environ["HF_HUB_CACHE"] = tmp_dir
-            tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
-            model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+            tokenizer, model = _load_pair()
 
-        model = _quantize_model_if_cpu(model)
+        # Quantization is off by default (QUANTIZE_CPU=0): it adds latency and can
+        # hard-crash Streamlit on some Windows / CPU torch builds.
+        model = _maybe_quantize(model)
         model.eval()
         return tokenizer, model, torch
     except Exception as exc:
@@ -321,32 +434,68 @@ _EMOTIONS_MODEL = None
 
 
 def _get_cosmus_pipeline():
+    """
+    Resolve COSMUS via model_registry / Streamlit cache, with process fallback.
+
+    Broad ``except`` is intentional: Streamlit cache may be unavailable outside
+    a script run (CLI / unit tests). Failures fall through to a process-local
+    singleton so inference can still proceed.
+    """
     global _COSMUS_PIPELINE
     try:
         from nlp.model_registry import resolve_cosmus_pipeline
 
         return resolve_cosmus_pipeline()
-    except Exception:
-        if _COSMUS_PIPELINE is None:
-            _COSMUS_PIPELINE = load_cosmus_pipeline()
-        return _COSMUS_PIPELINE
+    except Exception as exc:
+        logger.debug("COSMUS registry/cache unavailable (%s); using process singleton", exc)
+        try:
+            if _COSMUS_PIPELINE is None:
+                _COSMUS_PIPELINE = load_cosmus_pipeline()
+            return _COSMUS_PIPELINE
+        except NLPAnalysisError:
+            raise
+        except Exception as load_exc:
+            raise NLPAnalysisError(
+                _format_load_error(COSMUS_MODEL, load_exc),
+                step="cosmus_load",
+            ) from load_exc
 
 
 def _get_emotions_model():
+    """
+    Resolve emotions model via model_registry / Streamlit cache, with fallback.
+
+    Same rationale as ``_get_cosmus_pipeline``: outside Streamlit the cache
+    import path often fails; keep a process-local singleton for tests/CLI.
+    """
     global _EMOTIONS_MODEL
     try:
         from nlp.model_registry import resolve_emotions_model
 
         return resolve_emotions_model()
-    except Exception:
-        if _EMOTIONS_MODEL is None:
-            _EMOTIONS_MODEL = load_emotions_model()
-        return _EMOTIONS_MODEL
+    except Exception as exc:
+        logger.debug("Emotions registry/cache unavailable (%s); using process singleton", exc)
+        try:
+            if _EMOTIONS_MODEL is None:
+                _EMOTIONS_MODEL = load_emotions_model()
+            return _EMOTIONS_MODEL
+        except NLPAnalysisError:
+            raise
+        except Exception as load_exc:
+            raise NLPAnalysisError(
+                _format_load_error(EMOTIONS_MODEL, load_exc),
+                step="emotions_load",
+            ) from load_exc
 
 
 def classify_sentiment_cosmus(text: str) -> str:
-    results = classify_sentiment_batch([text])
-    return results[0] if results else "Нейтральна"
+    """Single-headline COSMUS label with soft fallback for callers/tests."""
+    try:
+        results = classify_sentiment_batch([text])
+        return results[0] if results else "Нейтральна"
+    except Exception as exc:
+        logger.warning("COSMUS single-text classification failed: %s", exc)
+        return "Нейтральна"
 
 
 def classify_sentiment_batch(texts: list[str]) -> list[str]:
@@ -387,26 +536,48 @@ def classify_emotions_batch(texts: list[str]) -> list[tuple[list[str], str]]:
     if texts is None or len(texts) == 0:
         return []
 
+    try:
+        tokenizer, model, torch = _get_emotions_model()
+    except NLPAnalysisError:
+        raise
+    except Exception as exc:
+        raise NLPAnalysisError(
+            _format_load_error(EMOTIONS_MODEL, exc),
+            step="emotions_load",
+        ) from exc
 
-    tokenizer, model, torch = _get_emotions_model()
     truncated = [_truncate(text) for text in texts]
     results: list[tuple[list[str], str]] = []
 
-    for start in range(0, len(truncated), SENTIMENT_BATCH_SIZE):
-        batch = truncated[start : start + SENTIMENT_BATCH_SIZE]
-        inputs = tokenizer(
-            batch,
-            return_tensors="pt",
-            truncation=True,
-            max_length=512,
-            padding=True,
-        )
-        with torch.no_grad():
-            probs_batch = torch.sigmoid(model(**inputs).logits).tolist()
+    try:
+        for start in range(0, len(truncated), SENTIMENT_BATCH_SIZE):
+            batch = truncated[start : start + SENTIMENT_BATCH_SIZE]
+            inputs = tokenizer(
+                batch,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True,
+            )
+            with torch.no_grad():
+                probs_batch = torch.sigmoid(model(**inputs).logits).tolist()
 
-        id2label = model.config.id2label
-        for probs in probs_batch:
-            results.append(_probs_to_emotions(probs, id2label))
+            id2label = model.config.id2label
+            for probs in probs_batch:
+                # HF may store id2label keys as strings — normalise to int index.
+                normalised = {
+                    int(key) if not isinstance(key, int) and str(key).isdigit() else key: value
+                    for key, value in id2label.items()
+                }
+                results.append(_probs_to_emotions(probs, normalised))
+    except NLPAnalysisError:
+        raise
+    except Exception as exc:
+        logger.exception("Emotion batch inference failed")
+        raise NLPAnalysisError(
+            f"Інференс емоцій не вдався: {exc}",
+            step="emotions_infer",
+        ) from exc
     return results
 
 
@@ -419,9 +590,8 @@ def classify_emotions(text: str) -> list[str]:
     try:
         detected, _ = _run_emotion_inference(text)
         return detected
-    except NLPAnalysisError:
-        raise
     except Exception as exc:
+        # Soft-fail for single-text callers; UI batch path surfaces NLPAnalysisError.
         logger.warning("Emotion inference failed: %s", exc)
         return [EMOTION_LABELS_UA.get("None", "Без емоцій")]
 
@@ -430,8 +600,6 @@ def _dominant_emotion(text: str) -> str:
     try:
         _, dominant = _run_emotion_inference(text)
         return dominant
-    except NLPAnalysisError:
-        raise
     except Exception as exc:
         logger.warning("Dominant emotion inference failed: %s", exc)
         return EMOTION_LABELS_UA.get("None", "Без емоцій")

@@ -18,7 +18,6 @@ def test_build_wordcloud_without_lemmatize(monkeypatch):
             "height": 60,
             "max_words": 20,
             "background_color": "white",
-            "colormap": "Blues",
         }
     ]
     monkeypatch.setattr(

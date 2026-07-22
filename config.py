@@ -115,20 +115,36 @@ def _truthy_flag(value: object) -> bool:
 
 def get_cloud_light() -> bool:
     """
-    Resolve light-UI mode from env, missing transformers, or Streamlit secrets.
+    Resolve light-UI mode (hide RoBERTa / emotions).
 
-    Lazy ``st.secrets`` lookup avoids importing Streamlit at module import time.
+    Light (stable) when:
+    * ``LIGHT_CLOUD`` env/secret is set, or
+    * ``transformers`` is missing, or
+    * ``ALLOW_HEAVY_NLP`` is not enabled (default).
+
+    Heavy models can hard-crash the Streamlit process (browser then shows
+    ``WebSocket onclose`` / ``ERR_EMPTY_RESPONSE``). Opt in with
+    ``ALLOW_HEAVY_NLP=1`` (env or Streamlit secrets).
     """
     if _truthy_flag(os.environ.get("LIGHT_CLOUD")):
         return True
     if not _transformers_available():
         return True
+
+    allow_heavy = _truthy_flag(os.environ.get("ALLOW_HEAVY_NLP"))
     try:
         import streamlit as st
 
-        return _truthy_flag(st.secrets.get("LIGHT_CLOUD", ""))
+        if _truthy_flag(st.secrets.get("LIGHT_CLOUD", "")):
+            return True
+        allow_heavy = allow_heavy or _truthy_flag(
+            st.secrets.get("ALLOW_HEAVY_NLP", ""),
+        )
     except Exception:
-        return False
+        pass
+
+    # Default: light/stable UI. Full NLP only when explicitly allowed.
+    return not allow_heavy
 
 
 # Prefer ``get_cloud_light()`` at call sites (secrets may load later).
