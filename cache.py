@@ -1,8 +1,8 @@
 """
 Streamlit cache wrappers — keeps core modules free of Streamlit imports.
 
-Each wrapper delegates to a pure function in ``data_loader`` or ``nlp/*``.
-Model-loading wrappers propagate ``NLPAnalysisError`` to the UI layer.
+Article loading is a thin facade over SQLite-backed ``fetch_articles``
+(shared TTL via ``ARTICLE_CACHE_TTL``). Model loaders use ``@st.cache_resource``.
 """
 
 import logging
@@ -16,10 +16,17 @@ from exceptions import DataLoaderError, NLPAnalysisError
 logger = logging.getLogger(__name__)
 
 
-@st.cache_data(show_spinner="Завантаження статей...")
-def load_articles(source_name: str):
+def load_articles(source_name: str, progress_callback=None):
     """
-    Cached wrapper around ``fetch_articles`` for the Streamlit UI.
+    Load articles for a news source (SQLite TTL cache inside ``fetch_articles``).
+
+    This is intentionally **not** ``@st.cache_data``: persistence and TTL live
+    in ``article_cache`` so Streamlit stays a thin facade. Optional
+    ``progress_callback`` receives ``(done, total)`` during scrape.
+
+    Args:
+        source_name: Key from ``NEWS_SOURCES``.
+        progress_callback: Optional ``(done, total)`` scrape progress hook.
 
     Raises:
         DataLoaderError: Unknown source or RSS failure.
@@ -32,11 +39,21 @@ def load_articles(source_name: str):
             source_name=source_name,
         ) from exc
 
-    return fetch_articles(
-        source_name=source_name,
-        feed_url=config["rss_url"],
-        scraper_name=config.get("scraper", "generic"),
-    )
+    try:
+        return fetch_articles(
+            source_name=source_name,
+            feed_url=config["rss_url"],
+            scraper_name=config.get("scraper", "generic"),
+            progress_callback=progress_callback,
+        )
+    except DataLoaderError:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected article load failure for %s", source_name)
+        raise DataLoaderError(
+            f"Не вдалося завантажити статті: {exc}",
+            source_name=source_name,
+        ) from exc
 
 
 @st.cache_resource
@@ -54,42 +71,6 @@ def get_spacy_nlp():
             f"Не вдалося завантажити spaCy: {exc}",
             step="spacy_load",
         ) from exc
-
-
-@st.cache_data
-def cached_preprocess(texts):
-    """Cached title/content preprocessing."""
-    from nlp.preprocessing import preprocess_texts
-
-    return preprocess_texts(texts)
-
-
-@st.cache_data
-def cached_top_words(corpus, n=10):
-    from nlp.ngrams import get_top_n_words
-
-    return get_top_n_words(corpus, n)
-
-
-@st.cache_data
-def cached_top_bigrams(corpus, n=10):
-    from nlp.ngrams import get_top_n_bigram
-
-    return get_top_n_bigram(corpus, n)
-
-
-@st.cache_data
-def cached_top_trigrams(corpus, n=10):
-    from nlp.ngrams import get_top_n_trigram
-
-    return get_top_n_trigram(corpus, n)
-
-
-@st.cache_data
-def cached_topic_modeling(content, number_topics=8, number_words=6):
-    from nlp.topics import run_topic_modeling
-
-    return run_topic_modeling(content, number_topics, number_words)
 
 
 @st.cache_resource
@@ -119,7 +100,7 @@ def get_emotions_model():
     except NLPAnalysisError:
         raise
     except Exception as exc:
-        logger.exception("Unexpected emotions model load failure")
+        logger.exception("Unexpected emotions load failure")
         raise NLPAnalysisError(
             f"Не вдалося завантажити модель емоцій: {exc}",
             step="emotions_load",

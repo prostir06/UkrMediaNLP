@@ -36,3 +36,55 @@ def test_nlp_functions_include_core_features():
 def test_article_columns_schema():
     assert "title" in ARTICLE_COLUMNS
     assert "scraped_ok" in ARTICLE_COLUMNS
+
+
+def test_get_cloud_light_reads_env(monkeypatch):
+    from config import get_cloud_light
+
+    monkeypatch.setenv("LIGHT_CLOUD", "1")
+    assert get_cloud_light() is True
+
+
+def test_get_cloud_light_reads_secrets(monkeypatch):
+    import sys
+    import types
+
+    from config import get_cloud_light
+
+    monkeypatch.delenv("LIGHT_CLOUD", raising=False)
+
+    fake_st = types.ModuleType("streamlit")
+    fake_st.secrets = {"LIGHT_CLOUD": "true"}
+    monkeypatch.setitem(sys.modules, "streamlit", fake_st)
+
+    # Force transformers-available path so secrets matter.
+    monkeypatch.setattr("config._transformers_available", lambda: True)
+    assert get_cloud_light() is True
+
+
+def test_get_cloud_light_when_transformers_missing(monkeypatch):
+    from config import get_cloud_light
+
+    monkeypatch.delenv("LIGHT_CLOUD", raising=False)
+    monkeypatch.setattr("config._transformers_available", lambda: False)
+    assert get_cloud_light() is True
+
+
+def test_get_cloud_light_secrets_exception_returns_false(monkeypatch):
+    import sys
+    import types
+
+    from config import get_cloud_light
+
+    monkeypatch.delenv("LIGHT_CLOUD", raising=False)
+    monkeypatch.setattr("config._transformers_available", lambda: True)
+
+    fake_st = types.ModuleType("streamlit")
+
+    class BrokenSecrets:
+        def get(self, *args, **kwargs):
+            raise RuntimeError("secrets unavailable")
+
+    fake_st.secrets = BrokenSecrets()
+    monkeypatch.setitem(sys.modules, "streamlit", fake_st)
+    assert get_cloud_light() is False

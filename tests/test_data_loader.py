@@ -29,7 +29,7 @@ def test_fallback_content_uses_description():
 def test_fetch_articles_enriches_from_rss_fixture(sample_rss_url, monkeypatch):
     monkeypatch.setattr(
         "data_loader.scrape_links_parallel",
-        lambda links, scraper_name: {
+        lambda links, scraper_name, **kwargs: {
             index: f"Scraped body for {url}" for index, url in links
         },
     )
@@ -43,7 +43,7 @@ def test_fetch_articles_enriches_from_rss_fixture(sample_rss_url, monkeypatch):
 def test_fetch_articles_uses_description_when_scrape_empty(sample_rss_url, monkeypatch):
     monkeypatch.setattr(
         "data_loader.scrape_links_parallel",
-        lambda links, scraper_name: {index: "" for index, _ in links},
+        lambda links, scraper_name, **kwargs: {index: "" for index, _ in links},
     )
 
     df = fetch_articles("Тест", sample_rss_url, "pravda")
@@ -67,7 +67,10 @@ def test_fetch_articles_raises_on_rss_error(sample_rss_url, monkeypatch):
 
 
 def test_fetch_articles_respects_max_articles(sample_rss_url, monkeypatch):
-    monkeypatch.setattr("data_loader.scrape_links_parallel", lambda links, scraper: {})
+    monkeypatch.setattr(
+        "data_loader.scrape_links_parallel",
+        lambda links, scraper, **kwargs: {},
+    )
 
     df = fetch_articles("Тест", sample_rss_url, "pravda", max_articles=1)
     assert len(df) == 1
@@ -111,8 +114,64 @@ def test_fetch_articles_adds_missing_columns(sample_rss_url, monkeypatch):
             return pd.DataFrame([{"title": "Only title", "link": "https://x.com/1"}])
 
     monkeypatch.setattr("data_loader.RSSFeed", MinimalFeed)
-    monkeypatch.setattr("data_loader.scrape_links_parallel", lambda links, scraper: {})
+    monkeypatch.setattr(
+        "data_loader.scrape_links_parallel",
+        lambda links, scraper, **kwargs: {},
+    )
 
     df = fetch_articles("Тест", sample_rss_url, "generic")
     assert "scraped_ok" in df.columns
     assert "description" in df.columns
+
+
+def test_fetch_articles_invokes_progress_callback(sample_rss_url, monkeypatch):
+    def scrape(links, scraper_name, progress_callback=None, **kwargs):
+        results = {}
+        total = len(links)
+        for i, (index, _url) in enumerate(links, start=1):
+            results[index] = f"body-{index}"
+            if progress_callback:
+                progress_callback(i, total)
+        return results
+
+    monkeypatch.setattr("data_loader.scrape_links_parallel", scrape)
+    seen = []
+    df = fetch_articles(
+        "Тест",
+        sample_rss_url,
+        "pravda",
+        progress_callback=lambda done, total: seen.append((done, total)),
+    )
+    assert len(df) == 2
+    assert seen[-1][0] == seen[-1][1]
+
+
+def test_fetch_articles_calls_clear_expired_on_cache_path(sample_rss_url, monkeypatch):
+    calls = {"clear": 0}
+
+    def fake_clear():
+        calls["clear"] += 1
+        return 0
+
+    cached = pd.DataFrame(
+        {
+            "title": ["Cached"],
+            "link": ["https://example.com"],
+            "description": [""],
+            "published": [""],
+            "category": [""],
+            "content": ["x"],
+            "source": ["Тест"],
+            "scraped_ok": [True],
+        }
+    )
+
+    monkeypatch.setenv("ARTICLE_CACHE", "1")
+    monkeypatch.setattr("data_loader.ARTICLE_CACHE_ENABLED", True)
+    monkeypatch.setattr("article_cache.clear_expired", fake_clear)
+    monkeypatch.setattr("article_cache.get_cached_articles", lambda key: cached)
+    monkeypatch.setattr("article_cache.make_cache_key", lambda *a, **k: "k")
+
+    df = fetch_articles("Тест", sample_rss_url, "pravda")
+    assert calls["clear"] == 1
+    assert df.attrs.get("from_cache") is True

@@ -32,7 +32,7 @@ jobs:
       - name: Run unit tests with coverage
         env:
           ARTICLE_CACHE: "0"
-        run: pytest -m "not slow" --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=55
+        run: pytest -m "not slow" --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=60
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
@@ -43,6 +43,30 @@ jobs:
 
       - name: Lint with ruff
         run: ruff check .
+
+  cloud-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install cloud (light) dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-cloud.txt
+          pip install -r requirements-dev.txt
+          python -m spacy download uk_core_news_sm
+
+      - name: Run unit tests without transformers
+        env:
+          ARTICLE_CACHE: "0"
+          LIGHT_CLOUD: "1"
+        run: pytest -m "not slow" -q
 
   docker-build:
     runs-on: ubuntu-latest

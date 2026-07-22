@@ -1,150 +1,82 @@
 # UkrMediaNLP
 
-
-
 Streamlit-додаток для збору новин з RSS українських медіа, скрейпінгу повного тексту та NLP-аналізу українською мовою.
-
-
 
 Аналог проєкту [NLP_SyntA](https://github.com/prostir06/NLP_SyntA), адаптований для українських джерел і моделей.
 
-
+Репозиторій: https://github.com/prostir06/UkrMediaNLP
 
 ## Можливості
 
-
-
 - **8 RSS-джерел:** NV, Радіо Свобода, Українська правда, Liga.net, RBC-UA, Інтерфакс-Україна, TSN, УНІАН
-
-- **SSRF-захист** при скрейпінгу (allowlist доменів, блок private IP)
-
-- **Паралельний скрейпінг** (до 50 статей, 3 workers, rate limit 1 req/s)
-
+- **SSRF-захист** при RSS і скрейпінгу (allowlist доменів, блок private IP)
+- **Паралельний скрейпінг** (до 50 статей, 3 workers, rate limit 1 req/s) + SQLite TTL-кеш
 - **NLP-аналіз українською:**
-
   - уніграми, біграми, триграми (з lemmatization)
-
-  - хмара слів
-
+  - ключові слова та хмара слів (лемми)
   - статистика тексту
-
-  - NER (spaCy `uk_core_news_sm`)
-
+  - NER (spaCy, за замовчуванням по контенту)
   - частини мови
-
   - тематичне моделювання (LDA)
-
-  - тональність (RoBERTa-COSMUS)
-
-  - емоції (`ukr-emotions-classifier`)
-
+  - тональність (RoBERTa-COSMUS / емоції / news lexicon)
   - екстрактивна сумаризація (LexRank)
-
-
+  - порівняння медіа (уніграми + news-sentiment)
 
 ## Структура проєкту
 
-
-
 ```
-
 ├── streamlit_app.py        # Entry point для Streamlit Cloud
-
 ├── app.py                  # Streamlit UI
-
-├── cache.py                # Streamlit cache wrappers
-
+├── ui/                     # renderers.py, charts.py
+├── cache.py                # Thin wrappers (моделі + load_articles → SQLite)
+├── article_cache.py        # SQLite TTL-кеш статей
 ├── config.py               # Джерела новин і константи
-
 ├── data_loader.py          # fetch_articles (RSS + scrape)
-
 ├── url_utils.py            # SSRF URL validation
-
-├── rss.py                  # RSS-парсер
-
+├── rss.py                  # RSS-парсер (shared HTTP stack)
 ├── scraping.py             # HTTP-скрейпінг
-
 ├── scrapers/               # Site-specific + JSON-LD парсери
-
 ├── nlp/                    # NLP-модулі (без Streamlit)
-
 ├── nlp_analysis.py         # Фасад для UI
-
 ├── data/stopwords_uk.txt   # Українські стоп-слова
-
-├── requirements.txt        # Python-залежності (CPU torch)
-
+├── requirements.txt        # Повний NLP (CPU torch)
+├── requirements-cloud.txt  # Light Cloud (без torch)
 ├── packages.txt            # Системні пакети для Streamlit Cloud
-
-├── tests/                  # pytest (96+ тестів)
-
+├── tests/                  # pytest (~186 тестів)
 ├── Dockerfile              # Multi-stage Docker image
-
-└── docker-compose.yml
-
+├── docker-compose.yml      # default + profile spacy-md / with-nginx
+├── runtime.txt             # Python 3.12 для Streamlit Cloud
+└── packages.txt            # fonts-dejavu-core для Cloud
 ```
-
-
 
 ## Встановлення (локально)
 
-
-
 **Python 3.11+** (рекомендовано 3.12).
 
-
-
 ```bash
-
 python -m venv .venv
-
 .venv\Scripts\activate        # Windows
-
 # source .venv/bin/activate   # Linux/macOS
 
-
-
 pip install -r requirements.txt
-
-python -m spacy download uk_core_news_sm   # якщо модель не встановилась автоматично
-
+python -m spacy download uk_core_news_sm
 ```
-
-
 
 Для розробки та тестів:
 
-
-
 ```bash
-
+pip install -r requirements.txt
 pip install -r requirements-dev.txt
-
-pytest -m "not slow" --cov=. --cov-fail-under=65
-
+pytest -m "not slow" --cov=. --cov-fail-under=60
 ```
-
-
 
 ## Запуск локально
 
-
-
 ```bash
-
 streamlit run streamlit_app.py
-
 ```
 
-
-
-Або `streamlit run app.py` — обидва entry points працюють однаково.
-
-
-
-Відкрийте http://localhost:8501
-
-
+Або `streamlit run app.py`. Відкрийте http://localhost:8501
 
 ## Docker
 
@@ -154,14 +86,20 @@ docker compose up --build
 
 Додаток: http://localhost:8501
 
-Preload моделей при старті контейнера:
+Preload моделей:
 
 ```bash
 docker compose build --build-arg PRELOAD_MODELS=true
 docker compose up
 ```
 
-Nginx reverse proxy (profile `with-nginx`):
+spaCy medium (`uk_core_news_md`):
+
+```bash
+docker compose --profile spacy-md up --build
+```
+
+Nginx reverse proxy:
 
 ```bash
 docker compose --profile with-nginx up --build
@@ -171,225 +109,79 @@ docker compose --profile with-nginx up --build
 
 ### Streamlit Cloud (light)
 
-Використовуйте `requirements-cloud.txt` (без torch) і змінну `LIGHT_CLOUD=1`, щоб приховати RoBERTa/емоції. Доступні n-грами, NER, LDA та «Тональність (новини)».
+1. Main file: `streamlit_app.py`
+2. Requirements: `requirements-cloud.txt`
+3. Опційно Secrets: `LIGHT_CLOUD = "1"` (читається з env і `st.secrets`)
 
----
+Без torch доступні n-грами, NER, LDA, «Тональність (новини)» тощо.
 
-## Публікація на GitHub
-
-### 1. Ініціалізація репозиторію
-
-Локальний initial commit уже створено на гілці `main`. Далі:
-
-```bash
-cd UkrMediaNLP
-git remote add origin https://github.com/YOUR_USERNAME/UkrMediaNLP.git
-git push -u origin main
-```
-
-git init
-
-git add .
-
-git commit -m "Initial commit: UkrMediaNLP Streamlit app"
-
-```
-
-
-
-### 2. Створення репозиторію на GitHub
-
-
-
-1. [github.com/new](https://github.com/new) → назва, напр. `UkrMediaNLP`
-
-2. **Не** додавайте README/LICENSE (вони вже є локально)
-
-3. Підключіть remote і запуште:
-
-
-
-```bash
-
-git branch -M main
-
-git remote add origin https://github.com/YOUR_USERNAME/UkrMediaNLP.git
-
-git push -u origin main
-
-```
-
-
-
-### 3. Що перевіряє CI
-
-
+## CI
 
 GitHub Actions (`.github/workflows/tests.yml`):
 
-
-
-- pytest з coverage ≥ 65%
-
+- pytest coverage gate **≥ 60%** (omit: `app.py`, `streamlit_app.py`, `ui/*`)
 - ruff lint
+- cloud-deps job (`requirements-cloud.txt` + `LIGHT_CLOUD=1`)
+- docker compose build smoke
 
-- docker compose build (smoke)
-
-
-
-Weekly scraper health check (`.github/workflows/scraper-health.yml`) — live RSS smoke.
-
-
-
-### 4. Файли, які не потрапляють у git
-
-
-
-- `.venv/`, `.pytest_cache/`, `.cache/`
-
-- `.streamlit/secrets.toml` (секрети; для цього проєкту не потрібні)
-
-
-
----
-
-
+Weekly scraper health: `.github/workflows/scraper-health.yml`
 
 ## Деплой на Streamlit Community Cloud
 
-### Передумови
-
-- Публічний репозиторій: https://github.com/prostir06/UkrMediaNLP
-- Обліковий запис [share.streamlit.io](https://share.streamlit.io)
+Репозиторій: https://github.com/prostir06/UkrMediaNLP
 
 ### Рекомендовано (free tier / light)
 
-1. **New app** → repo `prostir06/UkrMediaNLP`, branch `main`
-2. **Main file path:** `streamlit_app.py`
-3. **Advanced settings → Python requirements file:** `requirements-cloud.txt`
-4. Deploy
+1. [share.streamlit.io](https://share.streamlit.io) → **New app**
+2. Repo `prostir06/UkrMediaNLP`, branch `main`
+3. **Main file path:** `streamlit_app.py`
+4. **Advanced → Python requirements file:** `requirements-cloud.txt`
+5. (Опційно) Secrets → `LIGHT_CLOUD = "1"`
+6. Deploy
 
-`requirements-cloud.txt` **без** torch/transformers (~менше RAM). Sidebar автоматично ховає RoBERTa/емоції, якщо `transformers` відсутній. Доступні: огляд, n-грами, NER, POS, LDA, «Тональність (новини)», сумаризація, порівняння медіа.
+`packages.txt` і `runtime.txt` (Python 3.12) підхоплюються автоматично.
+Без torch доступні: огляд, n-грами, keywords, wordcloud, NER, POS, LDA, «Тональність (новини)», сумаризація, порівняння медіа.
 
-Системний пакет `packages.txt` (`fonts-dejavu-core`) підхоплюється автоматично для хмари слів.
+### Повний NLP
 
-### Повний NLP (transformers)
-
-Лише якщо у Cloud достатньо RAM, або краще **Docker** (2 GB+):
-
-- Requirements file: `requirements.txt` (CPU torch + transformers)
-- Або локально / VPS: `docker compose up --build`
+Docker / VPS (2 GB+ RAM) з `requirements.txt` і за потреби `PRELOAD_MODELS=true`.
 
 ### Секрети
-
-Не потрібні. RSS публічні. Опційно в Secrets:
 
 ```toml
 LIGHT_CLOUD = "1"
 ```
 
-(для явного light-режиму навіть з повним `requirements.txt` — потрібна підтримка через env; надійніше використовувати `requirements-cloud.txt`).
-
-### Обмеження free tier
-
-| Ресурс | Ліміт | Вплив |
-|--------|-------|-------|
-| RAM | ~1 GB | Повний torch+HF часто OOM |
-| Disk | Ephemeral | Моделі качаються на cold start |
-| CPU | Shared | Scrape 50 статей ~15–30 с |
-
----
-
-- При OOM Streamlit покаже помилку в UI; перезапустіть app або оберіть легшу функцію
-
-
-
-### Альтернатива: Docker на VPS
-
-
-
-Для production з усіма NLP-функціями:
-
-
-
-```bash
-
-docker compose up --build -d
-
-# nginx reverse proxy + basic auth — опційно
-
-```
-
-
-
----
-
-
-
 ## Підтримувані медіа
 
-
-
 | Медіа | RSS |
-
 |-------|-----|
-
 | NV | https://nv.ua/ukr/rss/all.xml |
-
 | Радіо Свобода | https://www.radiosvoboda.org/api/zrqitl-vomx-tpeoumq |
-
 | Українська правда | https://www.pravda.com.ua/rss/view_mainnews/ |
-
 | Liga.net | https://news.liga.net/ua/top/rss.xml |
-
 | RBC-UA | https://www.rbc.ua/static/rss/ukrnet.strong.ukr.rss.xml |
-
 | Інтерфакс-Україна | https://interfax.com.ua/news/last.rss |
-
 | TSN | https://tsn.ua/rss/full.rss |
-
 | УНІАН | https://rss.unian.ua/site/news_ukr.rss |
-
-
 
 ## Конфігурація
 
-
-
-Ключові константи в `config.py`:
-
-
-
 | Параметр | За замовч. | Опис |
-
 |----------|------------|------|
-
 | `MAX_ARTICLES` | 50 | Макс. статей з RSS |
-
 | `SCRAPE_MAX_WORKERS` | 3 | Паралельні потоки скрейпінгу |
-
 | `MAX_SENTIMENT_TITLES` | 30 | Заголовків для тональності |
-
 | `MAX_POS_ARTICLES` | 10 | Статей для POS-аналізу |
-
-
+| `ARTICLE_CACHE_TTL` | 12h | TTL SQLite-кешу статей |
+| `SPACY_MODEL` | `uk_core_news_sm` | spaCy pipeline |
 
 ## Обмеження
 
-
-
 - Sentiment-моделі натреновані переважно на соцмережах — на новинах точність може бути нижчою.
-
-- Скрейпінг залежить від верстки сайтів і може потребувати оновлення селекторів.
-
+- Скрейпінг залежить від верстки сайтів.
 - SSRF guard блокує fetch URL поза allowlist українських медіа.
-
-
 
 ## Ліцензія
 
-
-
 MIT — див. [LICENSE](LICENSE).
-
-

@@ -35,14 +35,31 @@ class ThreadSafeRateLimiter:
         self._last_request_by_host: dict[str, float] = {}
 
     def wait(self, host: str = "") -> None:
+        """
+        Enforce a minimum delay between requests to the same host.
+
+        The sleep happens **outside** the lock so workers targeting other
+        hosts are not blocked while this thread waits. The next-slot
+        timestamp is reserved under the lock before sleeping so concurrent
+        waiters on the same host stagger correctly.
+        """
         key = (host or "_default").lower()
-        with self._lock:
-            now = time.monotonic()
-            last = self._last_request_by_host.get(key, 0.0)
-            elapsed = now - last
-            if elapsed < self.delay_seconds:
-                time.sleep(self.delay_seconds - elapsed)
-            self._last_request_by_host[key] = time.monotonic()
+        sleep_for = 0.0
+        try:
+            with self._lock:
+                now = time.monotonic()
+                last = self._last_request_by_host.get(key, 0.0)
+                elapsed = now - last
+                if elapsed < self.delay_seconds:
+                    sleep_for = self.delay_seconds - elapsed
+                    self._last_request_by_host[key] = now + sleep_for
+                else:
+                    self._last_request_by_host[key] = now
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+        except Exception as exc:
+            # Never abort scraping because the limiter failed; log and continue.
+            logger.warning("Rate limiter wait failed for host=%s: %s", key, exc)
 
 
 _rate_limiter = ThreadSafeRateLimiter(SCRAPE_DELAY_SECONDS)
@@ -223,6 +240,7 @@ def scrape_links_parallel(
     links: list[tuple[int, str]],
     scraper_name: str,
     max_workers: int = SCRAPE_MAX_WORKERS,
+    progress_callback=None,
 ) -> dict[int, str]:
     """
     Scrape multiple article URLs concurrently while preserving index mapping.
@@ -231,6 +249,7 @@ def scrape_links_parallel(
         links: List of (dataframe_index, url) tuples.
         scraper_name: Scraper registry key.
         max_workers: Thread pool size.
+        progress_callback: Optional ``(done, total)`` callable after each URL.
 
     Returns:
         Mapping of index to scraped plain text (may be empty on failure).
@@ -240,6 +259,8 @@ def scrape_links_parallel(
     if not links:
         return results
 
+    total = sum(1 for _, url in links if url)
+    done = 0
     workers = min(max_workers, len(links))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_map = {
@@ -257,5 +278,11 @@ def scrape_links_parallel(
             except Exception as exc:
                 logger.warning("Parallel scrape failed index=%s: %s", index, exc)
                 results[index] = ""
+            done += 1
+            if progress_callback is not None:
+                try:
+                    progress_callback(done, total)
+                except Exception as exc:
+                    logger.debug("Progress callback failed: %s", exc)
 
     return results

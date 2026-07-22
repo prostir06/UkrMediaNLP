@@ -11,10 +11,7 @@ We therefore load the tokenizer and architecture from
 
 import logging
 import os
-from collections import Counter
 from pathlib import Path
-
-import matplotlib.pyplot as plt
 
 from exceptions import NLPAnalysisError
 
@@ -147,12 +144,15 @@ def load_cosmus_pipeline():
         ) from exc
 
     try:
-        return pipeline(
+        pipe = pipeline(
             "text-classification",
             model=COSMUS_MODEL,
             truncation=True,
             max_length=512,
         )
+        if hasattr(pipe, "model"):
+            pipe.model = _quantize_model_if_cpu(pipe.model)
+        return pipe
     except Exception as direct_exc:
         logger.info(
             "Direct COSMUS load failed (%s); loading base + weights",
@@ -224,6 +224,7 @@ def _build_cosmus_pipeline_from_weights():
     if unexpected:
         logger.warning("COSMUS weights unexpected keys: %s", unexpected[:8])
 
+    model = _quantize_model_if_cpu(model)
     model.eval()
     return pipeline(
         "text-classification",
@@ -434,52 +435,3 @@ def _dominant_emotion(text: str) -> str:
     except Exception as exc:
         logger.warning("Dominant emotion inference failed: %s", exc)
         return EMOTION_LABELS_UA.get("None", "Без емоцій")
-
-
-def build_sentiment_figure(texts, method: str = "cosmus"):
-    if method == "cosmus":
-        labels_list = classify_sentiment_batch(list(texts))
-    elif method == "emotions":
-        batch = classify_emotions_batch([str(t) for t in texts])
-        labels_list = [dominant for _, dominant in batch]
-    elif method == "news_rules":
-        from nlp.news_sentiment import classify_news_sentiment_batch
-
-        labels_list = classify_news_sentiment_batch([str(t) for t in texts])
-    else:
-        raise ValueError(f"Unknown sentiment method: {method}")
-
-    import pandas as pd
-
-    counts = pd.Series(labels_list).value_counts()
-    if counts.empty:
-        return None
-
-    colors = [SENTIMENT_COLORS.get(label, "#3498db") for label in counts.index]
-    fig, ax = plt.subplots()
-    ax.bar(counts.index, counts.values, color=colors, edgecolor="white")
-    ax.set_ylabel("Кількість")
-    ax.tick_params(axis="x", rotation=25)
-    return fig
-
-
-def build_emotion_figure(texts):
-    counter: Counter[str] = Counter()
-    try:
-        batch = classify_emotions_batch([str(t) for t in texts])
-        for detected, _ in batch:
-            counter.update(detected)
-    except NLPAnalysisError:
-        raise
-    except Exception as exc:
-        logger.warning("Emotion batch failed: %s", exc)
-        return None
-
-    if not counter:
-        return None
-
-    labels, counts = zip(*counter.most_common())
-    fig, ax = plt.subplots()
-    ax.barh(labels, counts, color="#8e44ad", edgecolor="white")
-    ax.set_xlabel("Кількість згадувань")
-    return fig

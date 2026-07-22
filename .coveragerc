@@ -5,8 +5,6 @@ omit =
     streamlit_app.py
     app.py
     ui/*
-    nlp/wordcloud_render.py
-    nlp_analysis.py
 
 [report]
 exclude_lines =

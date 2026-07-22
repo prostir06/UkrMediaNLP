@@ -15,7 +15,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Stem-like substrings so declined forms still match (e.g. «війни» → «війн»).
+# Stem-like markers; word-boundary regex keeps matches on token edges.
 POSITIVE_MARKERS = (
     "перемога",
     "успіх",
@@ -29,6 +29,9 @@ POSITIVE_MARKERS = (
     "покращення",
     "звільнення",
     "рятувальн",
+    "мирн",
+    "відбудов",
+    "інвестиц",
 )
 
 NEGATIVE_MARKERS = (
@@ -47,7 +50,22 @@ NEGATIVE_MARKERS = (
     "загроза",
     "руйнуван",
     "жертв",
+    "окупац",
+    "ракетн",
+    "евакуац",
 )
+
+
+def _compile_marker_pattern(markers: tuple[str, ...]) -> re.Pattern[str]:
+    """Build a case-insensitive word-boundary pattern for lexicon stems."""
+    escaped = [re.escape(marker) for marker in markers if marker]
+    # `(?<!\w)` / `(?!\w)` work better for Ukrainian stems than `\b`.
+    body = "|".join(escaped)
+    return re.compile(rf"(?<!\w)(?:{body})\w*", flags=re.UNICODE | re.IGNORECASE)
+
+
+_POSITIVE_RE = _compile_marker_pattern(POSITIVE_MARKERS)
+_NEGATIVE_RE = _compile_marker_pattern(NEGATIVE_MARKERS)
 
 
 def _safe_lower(text: object) -> str:
@@ -59,6 +77,14 @@ def _safe_lower(text: object) -> str:
         return ""
 
 
+def _count_markers(text: str, pattern: re.Pattern[str]) -> int:
+    try:
+        return len(pattern.findall(text))
+    except re.error as exc:
+        logger.debug("Marker match failed: %s", exc)
+        return 0
+
+
 def classify_news_sentiment(text: str) -> str:
     """
     Lightweight lexicon baseline for news headlines.
@@ -67,8 +93,8 @@ def classify_news_sentiment(text: str) -> str:
     """
     try:
         lowered = _safe_lower(text)
-        pos = sum(1 for marker in POSITIVE_MARKERS if marker in lowered)
-        neg = sum(1 for marker in NEGATIVE_MARKERS if marker in lowered)
+        pos = _count_markers(lowered, _POSITIVE_RE)
+        neg = _count_markers(lowered, _NEGATIVE_RE)
 
         if pos and neg:
             return "Змішана"
@@ -105,8 +131,8 @@ def headline_polarity_score(text: str) -> float:
         tokens = re.findall(r"[\w']+", lowered, flags=re.UNICODE)
         if not tokens:
             return 0.0
-        pos = sum(1 for marker in POSITIVE_MARKERS if marker in lowered)
-        neg = sum(1 for marker in NEGATIVE_MARKERS if marker in lowered)
+        pos = _count_markers(lowered, _POSITIVE_RE)
+        neg = _count_markers(lowered, _NEGATIVE_RE)
         total = pos + neg
         if total == 0:
             return 0.0

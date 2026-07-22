@@ -109,11 +109,29 @@ def _transformers_available() -> bool:
         return False
 
 
-# Light UI when LIGHT_CLOUD=1 or when transformers is not installed (Cloud light deps).
-CLOUD_LIGHT_MODE = (
-    os.environ.get("LIGHT_CLOUD", "").lower() in {"1", "true", "yes"}
-    or not _transformers_available()
-)
+def _truthy_flag(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def get_cloud_light() -> bool:
+    """
+    Resolve light-UI mode from env, missing transformers, or Streamlit secrets.
+
+    Lazy ``st.secrets`` lookup avoids importing Streamlit at module import time.
+    """
+    if _truthy_flag(os.environ.get("LIGHT_CLOUD")):
+        return True
+    if not _transformers_available():
+        return True
+    try:
+        import streamlit as st
+
+        return _truthy_flag(st.secrets.get("LIGHT_CLOUD", ""))
+    except Exception:
+        return False
+
+
+# Prefer ``get_cloud_light()`` at call sites (secrets may load later).
 
 NLP_FUNCTIONS_FULL = [
     "Вступ",
@@ -151,7 +169,7 @@ NLP_FUNCTIONS_LIGHT = [
     "Порівняння медіа",
 ]
 
-NLP_FUNCTIONS = NLP_FUNCTIONS_LIGHT if CLOUD_LIGHT_MODE else NLP_FUNCTIONS_FULL
+NLP_FUNCTIONS = NLP_FUNCTIONS_LIGHT if get_cloud_light() else NLP_FUNCTIONS_FULL
 
 
 NGRAM_DESCRIPTION = (

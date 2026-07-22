@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 FROM python:3.12-slim AS runtime
 
 ARG PRELOAD_MODELS=false
+ARG SPACY_MODEL=uk_core_news_sm
 
 WORKDIR /app
 
@@ -31,7 +32,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
     HF_HOME=/app/.cache/huggingface \
-    PRELOAD_MODELS=${PRELOAD_MODELS}
+    PRELOAD_MODELS=${PRELOAD_MODELS} \
+    SPACY_MODEL=${SPACY_MODEL}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -49,7 +51,8 @@ COPY scripts/docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker_entrypoint.sh \
     && mkdir -p /app/.cache/huggingface /app/.cache/articles \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && python -m spacy download ${SPACY_MODEL} || true
 
 USER appuser
 

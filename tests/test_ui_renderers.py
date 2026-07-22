@@ -24,7 +24,7 @@ def test_plot_sentiment_shows_warning_when_empty(mock_st, monkeypatch):
     from ui import renderers
 
     monkeypatch.setattr(
-        "nlp.sentiment.build_sentiment_figure",
+        "ui.charts.build_sentiment_figure",
         lambda texts, method="cosmus": None,
     )
     renderers.plot_sentiment_barchart(["a"], method="news_rules")
@@ -37,7 +37,7 @@ def test_plot_sentiment_shows_nlp_error(mock_st, monkeypatch):
     def boom(*args, **kwargs):
         raise NLPAnalysisError("fail", step="cosmus_load")
 
-    monkeypatch.setattr("nlp.sentiment.build_sentiment_figure", boom)
+    monkeypatch.setattr("ui.charts.build_sentiment_figure", boom)
     renderers.plot_sentiment_barchart(["a"])
     mock_st.error.assert_called()
 
@@ -86,7 +86,7 @@ def test_plot_ner_handles_empty(mock_st, monkeypatch):
     from ui import renderers
 
     monkeypatch.setattr(
-        "nlp.ner.build_ner_figure",
+        "ui.charts.build_ner_figure",
         lambda texts, entity="PER": (None, "Особа"),
     )
     renderers.plot_most_common_named_entity_barchart(["тест"])

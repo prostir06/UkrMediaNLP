@@ -31,7 +31,7 @@ def _safe_close(fig) -> None:
 
 def plot_most_common_named_entity_barchart(texts, entity: str = "PER") -> None:
     """Render top named entities for one NER label."""
-    from nlp.ner import build_ner_figure
+    from ui.charts import build_ner_figure
 
     fig = None
     try:
@@ -55,12 +55,13 @@ def plot_most_common_named_entity_barchart(texts, entity: str = "PER") -> None:
 def plot_parts_of_speech_barchart(texts) -> None:
     """Render POS distribution for a sampled article corpus."""
     from config import MAX_POS_CONTENT_CHARS
-    from nlp.pos import build_pos_figure, sample_pos_corpus
+    from nlp.pos import sample_pos_corpus
+    from ui.charts import build_pos_figure
 
     fig = None
     try:
         if hasattr(texts, "head"):
-            corpus = sample_pos_corpus(texts)
+            corpus = sample_pos_corpus(texts, max_articles=len(texts))
         else:
             corpus = [
                 str(item)[:MAX_POS_CONTENT_CHARS]
@@ -87,7 +88,7 @@ def plot_parts_of_speech_barchart(texts) -> None:
 
 def plot_sentiment_barchart(texts, method: str = "cosmus") -> None:
     """Render sentiment bar chart (``cosmus`` / ``emotions`` / ``news_rules``)."""
-    from nlp.sentiment import build_sentiment_figure
+    from ui.charts import build_sentiment_figure
 
     fig = None
     try:
@@ -112,7 +113,7 @@ def plot_sentiment_barchart(texts, method: str = "cosmus") -> None:
 
 def plot_emotion_distribution(texts) -> None:
     """Render multi-label emotion counts."""
-    from nlp.sentiment import build_emotion_figure
+    from ui.charts import build_emotion_figure
 
     fig = None
     try:

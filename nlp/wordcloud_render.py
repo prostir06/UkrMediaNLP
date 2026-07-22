@@ -1,4 +1,9 @@
-"""Word cloud generation for Ukrainian headlines (no Streamlit)."""
+"""
+Word cloud generation for Ukrainian headlines (no Streamlit).
+
+Uses optional spaCy lemmatization so declined forms collapse onto lemmas.
+Font resolution prefers bundled DejaVu, then system fonts.
+"""
 
 import logging
 from pathlib import Path
@@ -24,62 +29,88 @@ DEFAULT_STYLE = {
     "height": 1200,
 }
 
-EXTRA_STYLES = [
-    {
-        "width": 2000,
-        "height": 1200,
-        "random_state": 1,
-        "background_color": "salmon",
-        "colormap": "Pastel1",
-        "collocations": False,
-    },
-    {
-        "width": 2000,
-        "height": 1200,
-        "random_state": 1,
-        "background_color": "black",
-        "colormap": "Set2",
-        "collocations": False,
-    },
-]
-
 
 def _resolve_font_path() -> str | None:
+    """
+    Pick a TTF that can render Cyrillic glyphs.
+
+    Returns:
+        Absolute font path, or ``None`` to let WordCloud use its default.
+    """
     for path in FONT_CANDIDATES:
-        if path.exists():
-            return str(path)
+        try:
+            if path.exists():
+                return str(path)
+        except OSError as exc:
+            logger.debug("Font path check failed for %s: %s", path, exc)
+
     try:
         return font_manager.findfont("DejaVu Sans", fallback_to_default=True)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Matplotlib font lookup failed: %s", exc)
         return None
 
 
-def build_wordcloud_images(titles, styles: list[dict] | None = None):
+def build_wordcloud_images(
+    titles,
+    styles: list[dict] | None = None,
+    lemmatize: bool = True,
+):
     """
-    Build word-cloud image arrays.
+    Build word-cloud image arrays (NumPy) for UI display.
 
-    By default returns a single cloud. Pass ``styles=EXTRA_STYLES`` or a custom
-    list for additional variants (UI shows them as tabs).
+    Args:
+        titles: Iterable or pandas Series of headlines / short texts.
+        styles: Optional list of WordCloud kwargs; defaults to ``DEFAULT_STYLE``.
+        lemmatize: When True, run spaCy lemmatization before tokenization.
+
+    Returns:
+        List of image arrays; empty list when there is no usable text.
     """
-    if hasattr(titles, "fillna"):
-        long_string = " ".join(titles.fillna("").astype(str).tolist())
-    else:
-        long_string = " ".join(str(t or "") for t in titles)
+    try:
+        if hasattr(titles, "fillna"):
+            text_list = titles.fillna("").astype(str).tolist()
+        else:
+            text_list = [str(t or "") for t in titles]
+    except (TypeError, ValueError, AttributeError) as exc:
+        logger.warning("Cannot normalise titles for word cloud: %s", exc)
+        return []
 
+    if lemmatize:
+        try:
+            from nlp.model_registry import resolve_spacy_nlp
+            from nlp.text_utils import lemmatize_texts
+
+            nlp = resolve_spacy_nlp()
+            text_list = lemmatize_texts(text_list, nlp)
+        except Exception as exc:
+            # spaCy may be missing in light Cloud installs — keep raw tokens.
+            logger.debug("Wordcloud lemmatization skipped: %s", exc)
+
+    long_string = " ".join(text_list)
     if not long_string.strip():
         return []
 
-    stopwords = set(load_stopwords())
+    try:
+        stopwords = set(load_stopwords())
+    except Exception as exc:
+        logger.warning("Stopwords load failed, continuing without them: %s", exc)
+        stopwords = set()
+
     font_path = _resolve_font_path()
     selected = styles if styles is not None else [DEFAULT_STYLE]
 
     images = []
     for style in selected:
-        wordcloud = WordCloud(
-            font_path=font_path,
-            stopwords=stopwords,
-            regexp=UKRAINIAN_TOKEN_PATTERN,
-            **style,
-        ).generate(long_string)
-        images.append(wordcloud.to_array())
+        try:
+            wordcloud = WordCloud(
+                font_path=font_path,
+                stopwords=stopwords,
+                regexp=UKRAINIAN_TOKEN_PATTERN,
+                **style,
+            ).generate(long_string)
+            images.append(wordcloud.to_array())
+        except Exception as exc:
+            # One broken style must not abort the whole render.
+            logger.warning("WordCloud style failed (%s): %s", style, exc)
     return images

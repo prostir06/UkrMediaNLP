@@ -8,15 +8,80 @@ malformed item does not abort the entire feed.
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import feedparser
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 
-from config import ARTICLE_COLUMNS
+from config import ARTICLE_COLUMNS, DEFAULT_REQUEST_TIMEOUT, DEFAULT_USER_AGENT
 from exceptions import RSSFeedError
+from url_utils import MAX_RESPONSE_BYTES, is_allowed_url
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_feed_bytes(feed_url: str, timeout: int = DEFAULT_REQUEST_TIMEOUT) -> bytes:
+    """
+    Download RSS/Atom bytes via the shared scrape HTTP stack.
+
+    Applies SSRF allowlist, per-host rate limit, and response size limit.
+    Local ``file://`` feeds are handled by ``RSSFeed.parse`` and never
+    reach this helper.
+
+    Raises:
+        RSSFeedError: Blocked URL, empty body, HTTP failure, or network error.
+    """
+    from scraping import (
+        _execute_http_get,
+        _host_from_url,
+        _rate_limiter,
+        _read_limited_content,
+    )
+
+    if not is_allowed_url(feed_url):
+        raise RSSFeedError(
+            f"RSS URL blocked by SSRF guard: {feed_url}",
+            feed_url=feed_url,
+        )
+
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    try:
+        _rate_limiter.wait(_host_from_url(feed_url))
+        response = _execute_http_get(feed_url, timeout=timeout, headers=headers)
+        response.raise_for_status()
+        final_url = response.url or feed_url
+        if not is_allowed_url(final_url):
+            raise RSSFeedError(
+                f"RSS redirect blocked by SSRF guard: {final_url}",
+                feed_url=feed_url,
+            )
+        content = _read_limited_content(response, MAX_RESPONSE_BYTES)
+        if not content:
+            raise RSSFeedError(f"Empty RSS response: {feed_url}", feed_url=feed_url)
+        return content
+    except RSSFeedError:
+        raise
+    except requests.RequestException as exc:
+        logger.exception("Failed to fetch RSS feed: %s", feed_url)
+        raise RSSFeedError(
+            f"Cannot fetch RSS feed: {feed_url}",
+            feed_url=feed_url,
+        ) from exc
+    except OSError as exc:
+        logger.exception("Network error fetching RSS feed: %s", feed_url)
+        raise RSSFeedError(
+            f"Cannot fetch RSS feed: {feed_url}",
+            feed_url=feed_url,
+        ) from exc
+    except Exception as exc:
+        # Unexpected scraper helper failures still surface as RSSFeedError.
+        logger.exception("Unexpected RSS download failure: %s", feed_url)
+        raise RSSFeedError(
+            f"Cannot fetch RSS feed: {feed_url}",
+            feed_url=feed_url,
+        ) from exc
 
 
 class RSSFeed:
@@ -41,25 +106,20 @@ class RSSFeed:
         Raises:
             RSSFeedError: When the feed cannot be fetched or is empty/invalid.
         """
-        from urllib.parse import urlparse
-
-        from url_utils import is_allowed_url
-
         parsed = urlparse(self.feed_url)
-        if parsed.scheme in {"http", "https"}:
-            if not is_allowed_url(self.feed_url):
+        try:
+            if parsed.scheme in {"http", "https"}:
+                payload = fetch_feed_bytes(self.feed_url)
+                feed = feedparser.parse(payload)
+            elif parsed.scheme in {"", "file"}:
+                feed = feedparser.parse(self.feed_url)
+            else:
                 raise RSSFeedError(
-                    f"RSS URL blocked by SSRF guard: {self.feed_url}",
+                    f"Unsupported RSS URL scheme: {parsed.scheme}",
                     feed_url=self.feed_url,
                 )
-        elif parsed.scheme not in {"", "file"}:
-            raise RSSFeedError(
-                f"Unsupported RSS URL scheme: {parsed.scheme}",
-                feed_url=self.feed_url,
-            )
-
-        try:
-            feed = feedparser.parse(self.feed_url)
+        except RSSFeedError:
+            raise
         except Exception as exc:
             logger.exception("Failed to fetch RSS feed: %s", self.feed_url)
             raise RSSFeedError(

@@ -75,17 +75,11 @@ def preprocess_texts(texts) -> pd.Series:
         return pd.Series(as_text_list(texts))
 
 
-# Backward-compatible aliases used by cache.py and legacy imports
-get_spacy_nlp = load_spacy_model
-preprocess = preprocess_texts
-
 __all__ = [
     "NER_LABELS_UA",
     "POS_LABELS_UA",
     "SPACY_MODEL_NAME",
-    "get_spacy_nlp",
     "load_spacy_model",
     "normalise_whitespace",
-    "preprocess",
     "preprocess_texts",
 ]

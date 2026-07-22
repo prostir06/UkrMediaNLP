@@ -66,6 +66,7 @@ def fetch_articles(
     feed_url: str,
     scraper_name: str,
     max_articles: int | None = None,
+    progress_callback=None,
 ) -> pd.DataFrame:
     """
     Load articles from RSS and enrich each row with scraped page content.
@@ -75,6 +76,7 @@ def fetch_articles(
         feed_url: RSS/Atom endpoint URL.
         scraper_name: Key from ``SCRAPER_REGISTRY`` (e.g. ``pravda``).
         max_articles: Optional cap; defaults to ``MAX_ARTICLES`` from config.
+        progress_callback: Optional ``(done, total)`` scrape progress hook.
 
     Returns:
         DataFrame with ``ARTICLE_COLUMNS`` and attrs ``total_in_feed``,
@@ -87,8 +89,14 @@ def fetch_articles(
 
     if ARTICLE_CACHE_ENABLED:
         try:
-            from article_cache import get_cached_articles, make_cache_key, store_articles
+            from article_cache import (
+                clear_expired,
+                get_cached_articles,
+                make_cache_key,
+                store_articles,
+            )
 
+            clear_expired()
             cache_key = make_cache_key(source_name, feed_url, limit)
             cached = get_cached_articles(cache_key)
             if cached is not None and not cached.empty:
@@ -130,13 +138,18 @@ def fetch_articles(
     ]
 
     try:
-        scraped = scrape_links_parallel(links, scraper_name=scraper_name)
+        scraped = scrape_links_parallel(
+            links,
+            scraper_name=scraper_name,
+            progress_callback=progress_callback,
+        )
         for index, text in scraped.items():
             _apply_scrape_result(df, index, text)
     except Exception as exc:
         # Thread-pool failures should not abort the entire load; scrape sequentially.
         logger.exception("Parallel scraping failed, falling back to sequential: %s", exc)
-        for index, link in links:
+        total = len(links)
+        for done_idx, (index, link) in enumerate(links, start=1):
             try:
                 from scraping import full_text
 
@@ -151,6 +164,11 @@ def fetch_articles(
             except Exception as row_exc:
                 logger.warning("Skipping article %s: %s", link, row_exc)
                 _apply_scrape_result(df, index, "")
+            if progress_callback is not None:
+                try:
+                    progress_callback(done_idx, total)
+                except Exception as cb_exc:
+                    logger.debug("Progress callback failed: %s", cb_exc)
 
     scraped_count = int(df["scraped_ok"].sum()) if len(df) else 0
     logger.info(

@@ -21,8 +21,10 @@ from config import (
     NGRAM_DESCRIPTION,
     NLP_FUNCTIONS,
     WORDCLOUD_DESCRIPTION,
+    get_cloud_light,
 )
 from exceptions import DataLoaderError
+from nlp.news_sentiment import classify_news_sentiment_batch
 from nlp.preprocessing import NER_LABELS_UA
 from nlp_analysis import (
     aggregate_corpus_metrics,
@@ -55,6 +57,66 @@ POS_DESCRIPTIONS = [
 ]
 
 
+def _sample_size_slider(label: str, default: int, max_value: int, key: str) -> int:
+    """
+    Clamp and render a Streamlit sample-size slider.
+
+    Guards against empty corpora (``max_value < 1``) and invalid defaults so
+    Streamlit never receives an out-of-range ``value``.
+    """
+    try:
+        upper = max(1, int(max_value))
+        value = min(max(1, int(default)), upper)
+        return int(st.slider(label, min_value=1, max_value=upper, value=value, key=key))
+    except (TypeError, ValueError) as exc:
+        logger.warning("Sample size slider fallback (%s): %s", key, exc)
+        return max(1, int(default) if str(default).isdigit() else 1)
+    except Exception as exc:
+        logger.exception("Unexpected slider failure for key=%s", key)
+        raise RuntimeError(f"Не вдалося показати слайдер: {exc}") from exc
+
+
+def _load_source(source_name: str) -> pd.DataFrame:
+    """
+    Load articles with a live scrape progress bar (N/M).
+
+    Progress is only meaningful on cache miss; SQLite hits return immediately.
+    The bar is always cleared in ``finally`` so a failed load does not leave
+    a stuck widget on the page.
+    """
+    progress = None
+    try:
+        progress = st.progress(0, text="Завантаження статей...")
+
+        def on_progress(done: int, total: int) -> None:
+            """Update the Streamlit progress bar; ignore callback UI errors."""
+            if total <= 0 or progress is None:
+                return
+            try:
+                progress.progress(
+                    min(done / total, 1.0),
+                    text=f"Скрейпінг статей: {done}/{total}",
+                )
+            except Exception as exc:
+                logger.debug("Progress UI update skipped: %s", exc)
+
+        return load_articles(source_name, progress_callback=on_progress)
+    except DataLoaderError:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to load source %s", source_name)
+        raise DataLoaderError(
+            f"Не вдалося завантажити статті: {exc}",
+            source_name=source_name,
+        ) from exc
+    finally:
+        if progress is not None:
+            try:
+                progress.empty()
+            except Exception as exc:
+                logger.debug("Progress cleanup failed: %s", exc)
+
+
 def render_intro(intro_text: str) -> None:
     st.markdown(intro_text)
 
@@ -67,6 +129,10 @@ def render_snapshot(df: pd.DataFrame) -> None:
             f"Завантажено {len(df)} з {total_in_feed} статей RSS "
             f"(обмеження MAX_ARTICLES={MAX_ARTICLES})."
         )
+
+    if df.attrs.get("from_cache"):
+        st.caption("Дані з SQLite-кешу статей.")
+
     st.dataframe(
         df[["title", "published", "category", "scraped_ok", "link"]],
         use_container_width=True,
@@ -75,10 +141,10 @@ def render_snapshot(df: pd.DataFrame) -> None:
 
     total = len(df)
     scraped = int(df["scraped_ok"].sum()) if total else 0
-    st.metric("Кількість статей", total)
-    st.metric("З повним текстом", scraped)
-    if total:
-        st.caption(f"Успішність скрейпінгу: {scraped / total:.0%}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Кількість статей", total)
+    col2.metric("З повним текстом", scraped)
+    col3.metric("Успішність скрейпінгу", f"{scraped / total:.0%}" if total else "—")
 
     with st.expander("Посилання на статті"):
         for _, row in df.iterrows():
@@ -91,6 +157,7 @@ def render_snapshot(df: pd.DataFrame) -> None:
         file_name="articles.csv",
         mime="text/csv",
     )
+
 
 def _render_ngram_table(
     titles: pd.Series,
@@ -137,8 +204,8 @@ def render_trigrams(titles: pd.Series) -> None:
 
 def render_keywords(titles: pd.Series) -> None:
     st.subheader("Ключові слова")
-    st.markdown("Виділення найбільш частотних та значущих слів у заголовках новин.")
-    keywords = extract_keywords(titles, top_n=15)
+    st.markdown("Виділення найбільш частотних лем у заголовках новин.")
+    keywords = extract_keywords(titles, top_n=15, lemmatize=True)
     if not keywords:
         st.warning("Ключових слів не знайдено.")
         return
@@ -146,7 +213,6 @@ def render_keywords(titles: pd.Series) -> None:
     st.table(df_kw)
     fig = px.bar(df_kw, x="Ключове слово", y="Частота", color="Частота", height=500)
     st.plotly_chart(fig, use_container_width=True)
-
 
 
 def render_wordcloud(titles: pd.Series) -> None:
@@ -178,29 +244,84 @@ def render_text_stat(df: pd.DataFrame) -> None:
         st.write(f"**{name}:** {value}")
 
 
-def render_ner(titles: pd.Series) -> None:
+def render_ner(df: pd.DataFrame, titles: pd.Series) -> None:
     st.subheader("Розпізнавання сутностей (NER)")
     st.markdown(
-        "Named Entity Recognition — виділення іменованих сутностей у заголовках: "
-        "особи, організації, локації (модель spaCy `uk_core_news_sm`)."
+        "Named Entity Recognition — виділення іменованих сутностей у текстах статей "
+        "(модель spaCy). За замовчуванням аналізується вибірка контенту."
     )
     entity = st.selectbox(
         "Тип сутності",
         options=list(NER_LABELS_UA.keys()),
         format_func=lambda key: NER_LABELS_UA[key],
     )
-    plot_most_common_named_entity_barchart(titles, entity=entity)
+    source_mode = st.radio(
+        "Джерело тексту",
+        ["Контент статей", "Лише заголовки"],
+        horizontal=True,
+    )
+    if source_mode == "Лише заголовки":
+        texts = titles
+    else:
+        content = df["content"].fillna("").astype(str)
+        nonempty = content[content.str.strip().astype(bool)]
+        texts = nonempty if len(nonempty) else titles
+        sample_n = _sample_size_slider(
+            "Скільки статей для NER",
+            default=min(15, len(texts)),
+            max_value=max(1, len(texts)),
+            key="ner_sample",
+        )
+        texts = texts.head(sample_n)
+    plot_most_common_named_entity_barchart(texts, entity=entity)
 
 
 def render_pos(content: pd.Series) -> None:
     st.subheader("Частини мови")
-    st.markdown(
-        f"Розподіл частин мови у текстах статей (spaCy). "
-        f"Аналізуються перші {MAX_POS_ARTICLES} статей."
-    )
+    st.markdown("Розподіл частин мови у текстах статей (spaCy).")
     for tag, name_ua, example in POS_DESCRIPTIONS:
         st.markdown(f"- **{name_ua} ({tag})** — {example}")
-    plot_parts_of_speech_barchart(content)
+    sample_n = _sample_size_slider(
+        "Скільки статей для POS",
+        default=min(MAX_POS_ARTICLES, max(1, len(content))),
+        max_value=max(1, len(content)),
+        key="pos_sample",
+    )
+    plot_parts_of_speech_barchart(content.head(sample_n))
+
+
+def _render_sentiment_table(titles: pd.Series, labels: list[str]) -> None:
+    """
+    Show a per-article sentiment table and offer CSV download.
+
+    Length mismatches are truncated to the shorter sequence so Streamlit
+    never receives a ragged DataFrame.
+    """
+    try:
+        title_list = [str(t) for t in titles]
+        label_list = [str(label) for label in labels]
+        size = min(len(title_list), len(label_list))
+        if size == 0:
+            st.warning("Немає рядків для таблиці тональності.")
+            return
+
+        table = pd.DataFrame(
+            {
+                "Заголовок": title_list[:size],
+                "Тональність": label_list[:size],
+            }
+        )
+        st.dataframe(table, use_container_width=True, hide_index=True)
+        csv_bytes = table.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "Завантажити тональність CSV",
+            data=csv_bytes,
+            file_name="sentiment_per_article.csv",
+            mime="text/csv",
+        )
+    except Exception as exc:
+        logger.exception("Sentiment table render failed")
+        st.error(f"Не вдалося побудувати таблицю тональності: {exc}")
 
 
 def render_sentiment_cosmus(titles: pd.Series) -> None:
@@ -215,9 +336,13 @@ def render_sentiment_cosmus(titles: pd.Series) -> None:
         "На новинних заголовках точність може бути нижчою — "
         "порівняйте з «Тональність (новини)»."
     )
-    sample = titles.head(MAX_SENTIMENT_TITLES)
-    if len(titles) > MAX_SENTIMENT_TITLES:
-        st.caption(f"Аналізуються перші {MAX_SENTIMENT_TITLES} заголовків.")
+    sample_n = _sample_size_slider(
+        "Скільки заголовків",
+        default=min(MAX_SENTIMENT_TITLES, max(1, len(titles))),
+        max_value=max(1, len(titles)),
+        key="cosmus_sample",
+    )
+    sample = titles.head(sample_n)
     with st.spinner("Аналіз тональності..."):
         plot_sentiment_barchart(sample, method="cosmus")
 
@@ -232,9 +357,13 @@ def render_sentiment_emotions(titles: pd.Series) -> None:
         "Класифікатор емоцій орієнтований на розмовний текст. "
         "Нейтральні новинні заголовки часто отримують мітку «Без емоцій»."
     )
-    sample = titles.head(MAX_SENTIMENT_TITLES)
-    if len(titles) > MAX_SENTIMENT_TITLES:
-        st.caption(f"Аналізуються перші {MAX_SENTIMENT_TITLES} заголовків.")
+    sample_n = _sample_size_slider(
+        "Скільки заголовків",
+        default=min(MAX_SENTIMENT_TITLES, max(1, len(titles))),
+        max_value=max(1, len(titles)),
+        key="emotions_sample",
+    )
+    sample = titles.head(sample_n)
     with st.spinner("Аналіз емоцій..."):
         plot_emotion_distribution(sample)
 
@@ -245,21 +374,29 @@ def render_sentiment_news(titles: pd.Series) -> None:
         "Правиловий baseline для новинних заголовків (лексикон позитивних/негативних маркерів). "
         "Легкий для Streamlit Cloud, без transformers."
     )
-    sample = titles.head(MAX_SENTIMENT_TITLES)
+    sample_n = _sample_size_slider(
+        "Скільки заголовків",
+        default=min(MAX_SENTIMENT_TITLES, max(1, len(titles))),
+        max_value=max(1, len(titles)),
+        key="news_sample",
+    )
+    sample = titles.head(sample_n)
     with st.spinner("Аналіз тональності..."):
+        labels = classify_news_sentiment_batch([str(t) for t in sample])
         plot_sentiment_barchart(sample, method="news_rules")
+        _render_sentiment_table(sample, labels)
 
 
 def render_compare_media(primary_source: str) -> None:
     st.subheader("Порівняння медіа")
-    st.markdown("Порівняння топ-уніграм двох джерел за заголовками.")
+    st.markdown("Порівняння топ-уніграм і новинної тональності двох джерел.")
     other = st.selectbox(
         "Друге медіа",
         [name for name in NEWS_SOURCES if name != primary_source],
     )
     try:
-        df_a = load_articles(primary_source)
-        df_b = load_articles(other)
+        df_a = _load_source(primary_source)
+        df_b = _load_source(other)
     except DataLoaderError as exc:
         st.error(str(exc))
         return
@@ -274,9 +411,17 @@ def render_compare_media(primary_source: str) -> None:
     with col1:
         st.markdown(f"**{primary_source}**")
         st.table(pd.DataFrame(list(top_a.items())[:10], columns=["Слово", "N"]))
+        labels_a = classify_news_sentiment_batch([str(t) for t in titles_a.head(30)])
+        dist_a = pd.Series(labels_a).value_counts()
+        st.markdown("Тональність (новини)")
+        st.table(dist_a.rename("N"))
     with col2:
         st.markdown(f"**{other}**")
         st.table(pd.DataFrame(list(top_b.items())[:10], columns=["Слово", "N"]))
+        labels_b = classify_news_sentiment_batch([str(t) for t in titles_b.head(30)])
+        dist_b = pd.Series(labels_b).value_counts()
+        st.markdown("Тональність (новини)")
+        st.table(dist_b.rename("N"))
 
     if shared:
         st.markdown("**Спільні слова**")
@@ -300,8 +445,13 @@ def render_summarization(df: pd.DataFrame) -> None:
         "Екстрактивна сумаризація на основі LexRank: "
         "найважливіші речення з повного тексту статті (spaCy + TF-IDF)."
     )
-    st.caption(f"Сумаризуються перші {MAX_SUMMARY_ARTICLES} статей з текстом.")
-    run_text_summarization(df, sentence_count=3, max_articles=MAX_SUMMARY_ARTICLES)
+    sample_n = _sample_size_slider(
+        "Скільки статей сумаризувати",
+        default=min(MAX_SUMMARY_ARTICLES, max(1, len(df))),
+        max_value=max(1, len(df)),
+        key="summary_sample",
+    )
+    run_text_summarization(df, sentence_count=3, max_articles=sample_n)
 
 
 def load_data(source_name: str, nlp_function: str) -> None:
@@ -319,7 +469,7 @@ def load_data(source_name: str, nlp_function: str) -> None:
         return
 
     try:
-        df = load_articles(source_name)
+        df = _load_source(source_name)
     except DataLoaderError as exc:
         st.error(str(exc))
         return
@@ -343,7 +493,7 @@ def load_data(source_name: str, nlp_function: str) -> None:
         "Ключові слова": lambda: render_keywords(titles),
         "Хмара слів": lambda: render_wordcloud(titles),
         "Статистика тексту": lambda: render_text_stat(df),
-        "Розпізнавання сутностей": lambda: render_ner(titles),
+        "Розпізнавання сутностей": lambda: render_ner(df, titles),
         "Частини мови": lambda: render_pos(content),
         "Тематичне моделювання": lambda: render_topic_modeling(content),
         "Тональність (RoBERTa)": lambda: render_sentiment_cosmus(titles),
@@ -379,6 +529,8 @@ def main() -> None:
     )
     st.title("Аналіз новин українських медіа")
     st.caption("Збір новин з RSS, скрейпінг та NLP-аналіз українською мовою.")
+    if get_cloud_light():
+        st.caption("Режим LIGHT_CLOUD: transformers-моделі приховані.")
 
     st.sidebar.header("Налаштування")
     selected_source = st.sidebar.selectbox("Медіа", list(NEWS_SOURCES.keys()))

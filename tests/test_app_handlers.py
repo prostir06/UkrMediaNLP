@@ -16,6 +16,8 @@ def mock_st(monkeypatch):
     expander.__enter__ = MagicMock(return_value=expander)
     expander.__exit__ = MagicMock(return_value=False)
     st.expander.return_value = expander
+    cols = [MagicMock(), MagicMock(), MagicMock()]
+    st.columns.return_value = cols
     monkeypatch.setattr("app.st", st)
     return st
 
@@ -42,7 +44,8 @@ def test_render_snapshot_shows_metrics_and_table(mock_st):
     mock_st.subheader.assert_called_once()
     mock_st.caption.assert_called()
     mock_st.dataframe.assert_called_once()
-    assert mock_st.metric.call_count == 2
+    mock_st.columns.assert_called_once_with(3)
+    assert sum(col.metric.call_count for col in mock_st.columns.return_value) == 3
     mock_st.expander.assert_called_once()
 
 

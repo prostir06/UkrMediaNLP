@@ -34,7 +34,8 @@ def test_parse_empty_feed_raises(monkeypatch):
         bozo_exception = type("E", (), {"message": "bad xml"})()
         entries = []
 
-    monkeypatch.setattr("rss.feedparser.parse", lambda url: EmptyFeed())
+    monkeypatch.setattr("rss.fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr("rss.feedparser.parse", lambda payload: EmptyFeed())
     monkeypatch.setattr("url_utils.is_allowed_url", lambda url: True)
 
     with pytest.raises(RSSFeedError) as exc_info:
@@ -65,7 +66,8 @@ def test_skips_malformed_entry(monkeypatch):
             None,
         ]
 
-    monkeypatch.setattr("rss.feedparser.parse", lambda url: MixedFeed())
+    monkeypatch.setattr("rss.fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr("rss.feedparser.parse", lambda payload: MixedFeed())
     monkeypatch.setattr("url_utils.is_allowed_url", lambda url: True)
 
     df = RSSFeed("https://example.com/rss").parse()
@@ -78,7 +80,8 @@ def test_all_malformed_entries_raises(monkeypatch):
         bozo = False
         entries = [None, None]
 
-    monkeypatch.setattr("rss.feedparser.parse", lambda url: BrokenFeed())
+    monkeypatch.setattr("rss.fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr("rss.feedparser.parse", lambda payload: BrokenFeed())
     monkeypatch.setattr("url_utils.is_allowed_url", lambda url: True)
 
     with pytest.raises(RSSFeedError) as exc_info:

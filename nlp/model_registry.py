@@ -26,6 +26,22 @@ def _load_spacy_cached():
     return load_spacy_model()
 
 
+@lru_cache(maxsize=1)
+def _load_cosmus_cached():
+    """Process-local COSMUS pipeline singleton used outside Streamlit."""
+    from nlp.sentiment import load_cosmus_pipeline
+
+    return load_cosmus_pipeline()
+
+
+@lru_cache(maxsize=1)
+def _load_emotions_cached():
+    """Process-local emotions model singleton used outside Streamlit."""
+    from nlp.sentiment import load_emotions_model
+
+    return load_emotions_model()
+
+
 def resolve_spacy_nlp():
     """
     Return a spaCy pipeline, preferring Streamlit ``cache_resource``.
@@ -58,10 +74,14 @@ def resolve_cosmus_pipeline():
 
         return get_cosmus_pipeline()
     except Exception as exc:
-        logger.debug("Falling back to module COSMUS load: %s", exc)
-        from nlp.sentiment import load_cosmus_pipeline
-
-        return load_cosmus_pipeline()
+        logger.debug("Falling back to process-local COSMUS cache: %s", exc)
+        try:
+            return _load_cosmus_cached()
+        except Exception:
+            clear_fn = getattr(_load_cosmus_cached, "cache_clear", None)
+            if callable(clear_fn):
+                clear_fn()
+            raise
 
 
 def resolve_emotions_model():
@@ -71,12 +91,18 @@ def resolve_emotions_model():
 
         return get_emotions_model()
     except Exception as exc:
-        logger.debug("Falling back to module emotions load: %s", exc)
-        from nlp.sentiment import load_emotions_model
-
-        return load_emotions_model()
+        logger.debug("Falling back to process-local emotions cache: %s", exc)
+        try:
+            return _load_emotions_cached()
+        except Exception:
+            clear_fn = getattr(_load_emotions_cached, "cache_clear", None)
+            if callable(clear_fn):
+                clear_fn()
+            raise
 
 
 def clear_process_model_caches() -> None:
     """Clear process-local LRU caches (useful in tests)."""
     _load_spacy_cached.cache_clear()
+    _load_cosmus_cached.cache_clear()
+    _load_emotions_cached.cache_clear()
