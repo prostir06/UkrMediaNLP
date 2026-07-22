@@ -1,8 +1,6 @@
 """Tests for SSRF URL validation."""
 
-import socket
 
-import pytest
 
 from url_utils import get_allowed_domains, is_allowed_url
 
@@ -61,7 +59,6 @@ def test_hostname_matches_subdomain(monkeypatch):
 
 
 def test_dns_oserror_blocks_url(monkeypatch):
-    import socket
 
     def raise_oserror(*args, **kwargs):
         raise OSError("network down")

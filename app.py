@@ -11,22 +11,23 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from cache import load_articles
 from config import (
     MAX_ARTICLES,
     MAX_POS_ARTICLES,
     MAX_SENTIMENT_TITLES,
     MAX_SUMMARY_ARTICLES,
+    NEWS_SOURCES,
     NGRAM_DESCRIPTION,
     NLP_FUNCTIONS,
-    NEWS_SOURCES,
     WORDCLOUD_DESCRIPTION,
 )
-from cache import load_articles
 from exceptions import DataLoaderError
 from nlp.preprocessing import NER_LABELS_UA
 from nlp_analysis import (
     aggregate_corpus_metrics,
     display_topic_modeling,
+    extract_keywords,
     get_textstat_metrics,
     get_top_n_bigram,
     get_top_n_trigram,
@@ -132,6 +133,20 @@ def render_bigrams(titles: pd.Series) -> None:
 def render_trigrams(titles: pd.Series) -> None:
     st.subheader("Триграми")
     _render_ngram_table(titles, get_top_n_trigram, "Триграма")
+
+
+def render_keywords(titles: pd.Series) -> None:
+    st.subheader("Ключові слова")
+    st.markdown("Виділення найбільш частотних та значущих слів у заголовках новин.")
+    keywords = extract_keywords(titles, top_n=15)
+    if not keywords:
+        st.warning("Ключових слів не знайдено.")
+        return
+    df_kw = pd.DataFrame(keywords, columns=["Ключове слово", "Частота"])
+    st.table(df_kw)
+    fig = px.bar(df_kw, x="Ключове слово", y="Частота", color="Частота", height=500)
+    st.plotly_chart(fig, use_container_width=True)
+
 
 
 def render_wordcloud(titles: pd.Series) -> None:
@@ -325,6 +340,7 @@ def load_data(source_name: str, nlp_function: str) -> None:
         "Уніграми": lambda: render_unigrams(titles),
         "Біграми": lambda: render_bigrams(titles),
         "Триграми": lambda: render_trigrams(titles),
+        "Ключові слова": lambda: render_keywords(titles),
         "Хмара слів": lambda: render_wordcloud(titles),
         "Статистика тексту": lambda: render_text_stat(df),
         "Розпізнавання сутностей": lambda: render_ner(titles),

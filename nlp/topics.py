@@ -9,7 +9,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 
 from exceptions import NLPAnalysisError
-from nlp.text_utils import UKRAINIAN_TOKEN_PATTERN, as_text_list, single_token_stopwords
+from nlp.text_utils import UKRAINIAN_TOKEN_PATTERN, single_token_stopwords
 
 logger = logging.getLogger(__name__)
 

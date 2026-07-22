@@ -1,7 +1,6 @@
 """Unit tests for nlp.text_utils."""
 
 import pandas as pd
-import pytest
 
 from nlp.text_utils import (
     as_text_list,

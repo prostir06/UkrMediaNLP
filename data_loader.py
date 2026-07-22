@@ -9,7 +9,7 @@ import logging
 
 import pandas as pd
 
-from config import ARTICLE_COLUMNS, ARTICLE_CACHE_ENABLED, MAX_ARTICLES
+from config import ARTICLE_CACHE_ENABLED, ARTICLE_COLUMNS, MAX_ARTICLES
 from exceptions import DataLoaderError, RSSFeedError, ScrapingError
 from rss import RSSFeed
 from scraping import scrape_links_parallel

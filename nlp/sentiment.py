@@ -210,6 +210,24 @@ def _remap_state_dict_keys(state_dict: dict, model_keys) -> dict:
     return best
 
 
+def _quantize_model_if_cpu(model):
+    """Apply dynamic INT8 quantization on Linear layers for CPU inference."""
+    try:
+        import torch
+
+        if hasattr(torch, "ao") and hasattr(torch.ao, "quantization"):
+            return torch.ao.quantization.quantize_dynamic(
+                model, {torch.nn.Linear}, dtype=torch.qint8
+            )
+        if hasattr(torch, "quantization"):
+            return torch.quantization.quantize_dynamic(
+                model, {torch.nn.Linear}, dtype=torch.qint8
+            )
+    except Exception as exc:
+        logger.debug("CPU dynamic quantization skipped: %s", exc)
+    return model
+
+
 def load_emotions_model():
     try:
         import torch
@@ -217,6 +235,7 @@ def load_emotions_model():
 
         tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
         model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+        model = _quantize_model_if_cpu(model)
         model.eval()
         return tokenizer, model, torch
     except Exception as exc:
@@ -224,6 +243,7 @@ def load_emotions_model():
             _format_load_error(EMOTIONS_MODEL, exc),
             step="emotions_load",
         ) from exc
+
 
 
 _COSMUS_PIPELINE = None

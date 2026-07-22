@@ -46,6 +46,42 @@ class ThreadSafeRateLimiter:
 
 
 _rate_limiter = ThreadSafeRateLimiter(SCRAPE_DELAY_SECONDS)
+_thread_local = threading.local()
+
+
+def _get_session() -> requests.Session:
+    """Return a thread-local requests.Session with connection pooling."""
+    if not hasattr(_thread_local, "session"):
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=10,
+            max_retries=0,
+        )
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        _thread_local.session = session
+    return _thread_local.session
+
+
+def _execute_http_get(url: str, timeout: int, headers: dict) -> requests.Response:
+    """Execute GET request using session pool or patched requests.get."""
+    if getattr(requests.get, "__module__", "") != "requests.api":
+        return requests.get(
+            url,
+            timeout=timeout,
+            headers=headers,
+            allow_redirects=True,
+            stream=True,
+        )
+    session = _get_session()
+    return session.get(
+        url,
+        timeout=timeout,
+        headers=headers,
+        allow_redirects=True,
+        stream=True,
+    )
 
 
 def _host_from_url(url: str) -> str:
@@ -96,13 +132,8 @@ def fetch_html(url: str, timeout: int = DEFAULT_REQUEST_TIMEOUT) -> bytes:
     for attempt in range(HTTP_MAX_RETRIES):
         _rate_limiter.wait(_host_from_url(url))
         try:
-            response = requests.get(
-                url,
-                timeout=timeout,
-                headers=headers,
-                allow_redirects=True,
-                stream=True,
-            )
+            response = _execute_http_get(url, timeout=timeout, headers=headers)
+
 
             if response.status_code in RETRYABLE_STATUS_CODES:
                 logger.warning(

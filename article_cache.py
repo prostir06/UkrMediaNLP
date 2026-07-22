@@ -1,14 +1,14 @@
 """
 SQLite-backed article cache with TTL (persistent across Streamlit restarts).
 
-Design
-------
-* Key = SHA-256 of ``source|feed_url|max_articles``.
-* Payload = JSON records from a pandas DataFrame.
-* Expired rows are ignored on read; call ``clear_expired()`` to reclaim disk.
-
-Failures never abort the scrape pipeline: every public function catches
-I/O / SQLite / JSON errors and logs a warning.
+Design and Architecture
+----------------------
+* Key: SHA-256 hash of ``source|feed_url|max_articles``.
+* Payload: Serialized JSON records derived from a pandas DataFrame.
+* Expiry: Expired rows are ignored on read operations; ``clear_expired()``
+  can be called periodically to reclaim disk space.
+* Fault Tolerance: Public functions catch I/O, SQLite, and JSON errors, logging
+  warnings and allowing the main scrape pipeline to proceed seamlessly.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import logging
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -27,22 +28,38 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_ttl_seconds() -> int:
-    """Parse ``ARTICLE_CACHE_TTL`` safely (default 12 hours)."""
+    """
+    Parse ``ARTICLE_CACHE_TTL`` environment variable safely.
+
+    Returns:
+        int: TTL in seconds (defaults to 12 hours if unconfigured or invalid).
+    """
     raw = os.environ.get("ARTICLE_CACHE_TTL", str(12 * 3600))
     try:
         value = int(raw)
         return value if value > 0 else 12 * 3600
-    except (TypeError, ValueError):
-        logger.warning("Invalid ARTICLE_CACHE_TTL=%r; using 12h default", raw)
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "Invalid ARTICLE_CACHE_TTL=%r (%s); using 12h default", raw, exc
+        )
         return 12 * 3600
 
 
+# Configuration constants
 DEFAULT_CACHE_DIR = Path(os.environ.get("ARTICLE_CACHE_DIR", ".cache/articles"))
 DEFAULT_TTL_SECONDS = _parse_ttl_seconds()
 
 
 def _cache_path() -> Path:
-    """Ensure cache directory exists and return the SQLite file path."""
+    """
+    Ensure the parent cache directory exists and return the SQLite database path.
+
+    Returns:
+        Path: Absolute path to the SQLite database file.
+
+    Raises:
+        OSError: If directory creation fails due to filesystem permissions.
+    """
     try:
         DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -52,9 +69,18 @@ def _cache_path() -> Path:
 
 
 def _connect() -> sqlite3.Connection:
-    """Open SQLite and ensure the schema exists."""
+    """
+    Open an SQLite database connection and verify the table schema.
+
+    Returns:
+        sqlite3.Connection: Opened connection object.
+
+    Raises:
+        sqlite3.Error: If connecting or table creation fails.
+    """
     conn = sqlite3.connect(str(_cache_path()), timeout=30)
     try:
+        # Create table if it doesn't already exist
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS article_cache (
@@ -65,27 +91,56 @@ def _connect() -> sqlite3.Connection:
             )
             """
         )
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        logger.error("Failed to initialize SQLite table schema: %s", exc)
         conn.close()
         raise
     return conn
 
 
+@contextmanager
+def _managed_connection():
+    """
+    Context manager for SQLite connections that guarantees connection closure.
+
+    Yields:
+        sqlite3.Connection: Active database connection.
+    """
+    conn = None
+    try:
+        conn = _connect()
+        yield conn
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error as exc:
+                logger.debug("Error closing SQLite database connection: %s", exc)
+
+
 def make_cache_key(source_name: str, feed_url: str, max_articles: int) -> str:
     """
-    Build a stable cache key for one load configuration.
+    Build a stable SHA-256 hash cache key for a given scraping configuration.
 
     Args:
-        source_name: Media label (e.g. ``NV``).
-        feed_url: RSS endpoint.
-        max_articles: Slice limit applied after RSS parse.
+        source_name: Media source label (e.g., 'NV', 'Українська правда').
+        feed_url: RSS feed URL endpoint.
+        max_articles: Maximum article count limit.
+
+    Returns:
+        str: Hexadecimal SHA-256 hash string.
     """
     try:
         raw = f"{source_name}|{feed_url}|{int(max_articles)}"
     except (TypeError, ValueError) as exc:
-        logger.debug("Falling back to string max_articles in cache key: %s", exc)
+        logger.debug("Falling back to raw string max_articles in cache key: %s", exc)
         raw = f"{source_name}|{feed_url}|{max_articles}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    try:
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    except (AttributeError, UnicodeEncodeError) as exc:
+        logger.warning("Failed to encode cache key inputs: %s", exc)
+        return ""
 
 
 def get_cached_articles(
@@ -93,66 +148,96 @@ def get_cached_articles(
     ttl_seconds: int | None = None,
 ) -> pd.DataFrame | None:
     """
-    Return a cached DataFrame or ``None`` on miss / expiry / corruption.
+    Retrieve cached article records as a pandas DataFrame.
 
-    Never raises to callers — scrape must continue without cache.
+    Args:
+        cache_key: SHA-256 cache key generated by ``make_cache_key``.
+        ttl_seconds: Optional TTL override in seconds. Defaults to 12 hours.
+
+    Returns:
+        pd.DataFrame | None: Cached DataFrame, or None if miss/expired/corrupt.
     """
     ttl = DEFAULT_TTL_SECONDS if ttl_seconds is None else ttl_seconds
-    if not cache_key:
+    if not cache_key or not isinstance(cache_key, str):
         return None
 
     try:
-        with _connect() as conn:
+        with _managed_connection() as conn:
             row = conn.execute(
                 "SELECT payload, created_at FROM article_cache WHERE cache_key = ?",
                 (cache_key,),
             ).fetchone()
+
         if not row:
             return None
 
         payload, created_at = row
-        age = time.time() - float(created_at)
+
+        # Verify entry TTL age
+        try:
+            age = time.time() - float(created_at)
+        except (TypeError, ValueError):
+            logger.warning("Invalid timestamp in cache entry for key %s", cache_key)
+            return None
+
         if age > ttl:
             logger.debug("Cache entry expired (age=%.0fs, ttl=%s)", age, ttl)
             return None
 
+        # Deserialize payload JSON into pandas DataFrame
         records = json.loads(payload)
         if not isinstance(records, list):
-            logger.warning("Cache payload is not a list; ignoring")
+            logger.warning("Cache payload for key %s is not a list; ignoring", cache_key)
             return None
+
         return pd.DataFrame.from_records(records)
     except (OSError, sqlite3.Error, json.JSONDecodeError, TypeError, ValueError) as exc:
-        logger.warning("Article cache read failed: %s", exc)
+        logger.warning("Article cache read failed for key %s: %s", cache_key, exc)
         return None
 
 
 def store_articles(cache_key: str, source_name: str, df: pd.DataFrame) -> None:
-    """Persist a DataFrame as JSON. Silently skips on empty or invalid input."""
+    """
+    Persist an article DataFrame to SQLite cache storage.
+
+    Args:
+        cache_key: SHA-256 cache key.
+        source_name: Human-readable news source name.
+        df: Article DataFrame to store.
+    """
     if not cache_key or df is None or getattr(df, "empty", True):
         return
 
     try:
         payload = df.to_json(orient="records", force_ascii=False)
-        with _connect() as conn:
+        with _managed_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO article_cache
                     (cache_key, source_name, payload, created_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (cache_key, source_name, payload, time.time()),
+                (cache_key, str(source_name), payload, time.time()),
             )
             conn.commit()
     except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
-        logger.warning("Article cache write failed: %s", exc)
+        logger.warning("Article cache write failed for source %s: %s", source_name, exc)
 
 
 def clear_expired(ttl_seconds: int | None = None) -> int:
-    """Delete expired rows; returns number of deleted rows (0 on failure)."""
+    """
+    Delete expired cache rows from SQLite storage.
+
+    Args:
+        ttl_seconds: Optional TTL override in seconds.
+
+    Returns:
+        int: Number of deleted expired rows (0 if operation fails).
+    """
     ttl = DEFAULT_TTL_SECONDS if ttl_seconds is None else ttl_seconds
     cutoff = time.time() - ttl
     try:
-        with _connect() as conn:
+        with _managed_connection() as conn:
             cursor = conn.execute(
                 "DELETE FROM article_cache WHERE created_at < ?",
                 (cutoff,),
@@ -162,3 +247,5 @@ def clear_expired(ttl_seconds: int | None = None) -> int:
     except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
         logger.warning("Article cache cleanup failed: %s", exc)
         return 0
+
+

@@ -1,4 +1,4 @@
-"""Unit tests for article_cache error paths and helpers."""
+"""Unit tests for article_cache error paths, PEP 8 compliance, and edge cases."""
 
 import json
 import sqlite3
@@ -36,22 +36,12 @@ def test_store_skips_empty_dataframe(cache_dir):
 
 def test_get_cached_articles_empty_key(cache_dir):
     assert ac.get_cached_articles("") is None
+    assert ac.get_cached_articles(None) is None  # type: ignore[arg-type]
 
 
 def test_corrupt_payload_returns_none(cache_dir):
     key = ac.make_cache_key("NV", "https://nv.ua/rss", 5)
-    path = ac._cache_path()
-    with sqlite3.connect(str(path)) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS article_cache (
-                cache_key TEXT PRIMARY KEY,
-                source_name TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                created_at REAL NOT NULL
-            )
-            """
-        )
+    with ac._managed_connection() as conn:
         conn.execute(
             "INSERT INTO article_cache VALUES (?, ?, ?, ?)",
             (key, "NV", "{not-json", 1_700_000_000.0),
@@ -63,10 +53,21 @@ def test_corrupt_payload_returns_none(cache_dir):
 
 def test_non_list_payload_returns_none(cache_dir):
     key = ac.make_cache_key("TSN", "https://tsn.ua/rss", 3)
-    with ac._connect() as conn:
+    with ac._managed_connection() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO article_cache VALUES (?, ?, ?, ?)",
             (key, "TSN", json.dumps({"title": "x"}), 1_700_000_000.0),
+        )
+        conn.commit()
+    assert ac.get_cached_articles(key, ttl_seconds=10**9) is None
+
+
+def test_invalid_timestamp_returns_none(cache_dir):
+    key = ac.make_cache_key("TSN", "https://tsn.ua/rss", 4)
+    with ac._managed_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO article_cache VALUES (?, ?, ?, ?)",
+            (key, "TSN", json.dumps([{"title": "x"}]), "invalid_date"),
         )
         conn.commit()
     assert ac.get_cached_articles(key, ttl_seconds=10**9) is None
@@ -83,3 +84,31 @@ def test_clear_expired_removes_old_rows(cache_dir):
 def test_parse_ttl_seconds_invalid(monkeypatch):
     monkeypatch.setenv("ARTICLE_CACHE_TTL", "not-a-number")
     assert ac._parse_ttl_seconds() == 12 * 3600
+
+    monkeypatch.setenv("ARTICLE_CACHE_TTL", "-100")
+    assert ac._parse_ttl_seconds() == 12 * 3600
+
+
+def test_get_cached_articles_handles_db_error(cache_dir, monkeypatch):
+    def broken_connection():
+        raise sqlite3.OperationalError("db locked")
+
+    monkeypatch.setattr(ac, "_connect", broken_connection)
+    assert ac.get_cached_articles("valid_key") is None
+
+
+def test_store_articles_handles_db_error(cache_dir, monkeypatch):
+    def broken_connection():
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(ac, "_connect", broken_connection)
+    # Should not raise exception
+    ac.store_articles("valid_key", "NV", pd.DataFrame([{"title": "test"}]))
+
+
+def test_clear_expired_handles_db_error(cache_dir, monkeypatch):
+    def broken_connection():
+        raise sqlite3.OperationalError("db locked")
+
+    monkeypatch.setattr(ac, "_connect", broken_connection)
+    assert ac.clear_expired() == 0

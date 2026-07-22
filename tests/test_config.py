@@ -18,7 +18,6 @@ def test_unian_uses_ukrainian_feed():
 
 
 def test_nlp_functions_include_core_features():
-    from config import NLP_FUNCTIONS_FULL, NLP_FUNCTIONS_LIGHT
 
     expected_full = {
         "Вступ",

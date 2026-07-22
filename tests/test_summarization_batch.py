@@ -1,7 +1,6 @@
 """Unit tests for summarize_articles helper."""
 
 import pandas as pd
-import pytest
 
 from nlp.summarization import summarize_articles
 

@@ -5,6 +5,7 @@ Re-exports pure NLP helpers and UI renderers. Compute modules in ``nlp/*``
 do not import Streamlit; plotting lives in ``ui.renderers``.
 """
 
+from nlp.keywords import extract_keywords
 from nlp.ngrams import get_top_n_bigram, get_top_n_trigram, get_top_n_words
 from nlp.preprocessing import NER_LABELS_UA, preprocess_texts
 from nlp.sentiment import SENTIMENT_LABELS_UA
@@ -27,6 +28,7 @@ __all__ = [
     "SENTIMENT_LABELS_UA",
     "aggregate_corpus_metrics",
     "display_topic_modeling",
+    "extract_keywords",
     "get_textstat_metrics",
     "get_top_n_bigram",
     "get_top_n_trigram",
@@ -40,3 +42,4 @@ __all__ = [
     "run_text_summarization",
     "run_topic_modeling",
 ]
+

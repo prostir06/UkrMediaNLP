@@ -1,7 +1,6 @@
 """Scraper registry for Ukrainian media sources."""
 
 from scrapers.generic import GenericScraper
-from scrapers.structured import StructuredDataScraper
 from scrapers.site_scrapers import (
     INTERFAX_SCRAPER,
     LIGA_SCRAPER,
@@ -12,6 +11,7 @@ from scrapers.site_scrapers import (
     TSN_SCRAPER,
     UNIAN_SCRAPER,
 )
+from scrapers.structured import StructuredDataScraper
 
 GENERIC_SCRAPER = GenericScraper()
 STRUCTURED_SCRAPER = StructuredDataScraper()
