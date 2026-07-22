@@ -83,6 +83,42 @@ def test_render_sentiment_table_empty(mock_st):
     mock_st.warning.assert_called()
 
 
+def test_select_sidebar_source_returns_media(mock_st, monkeypatch):
+    from app import _select_sidebar_source
+
+    mock_st.sidebar.selectbox.side_effect = ["Технології", "DOU"]
+    monkeypatch.setattr(
+        "app.sources_for_category",
+        lambda cat: ["DOU", "AIN.UA"] if cat == "Технології" else [],
+    )
+    assert _select_sidebar_source() == "DOU"
+
+
+def test_select_sidebar_source_empty_category(mock_st, monkeypatch):
+    from app import _select_sidebar_source
+
+    mock_st.sidebar.selectbox.return_value = "Економіка"
+    monkeypatch.setattr("app.sources_for_category", lambda cat: [])
+    assert _select_sidebar_source() is None
+    mock_st.sidebar.warning.assert_called()
+    mock_st.info.assert_called()
+
+
+def test_select_sidebar_source_handles_widget_error(mock_st, monkeypatch):
+    from app import _select_sidebar_source
+
+    mock_st.sidebar.selectbox.side_effect = RuntimeError("widget boom")
+    assert _select_sidebar_source() is None
+    mock_st.error.assert_called()
+
+
+def test_load_data_unknown_source(mock_st):
+    from app import load_data
+
+    load_data("Немає такого", "Вступ")
+    mock_st.error.assert_called()
+
+
 def test_render_compare_media(mock_st, monkeypatch):
     from app import render_compare_media
 

@@ -17,12 +17,16 @@ from config import (
     MAX_POS_ARTICLES,
     MAX_SENTIMENT_TITLES,
     MAX_SUMMARY_ARTICLES,
+    MEDIA_CATEGORIES,
     NEWS_SOURCES,
     NGRAM_DESCRIPTION,
     NLP_FUNCTIONS_FULL,
     NLP_FUNCTIONS_LIGHT,
     WORDCLOUD_DESCRIPTION,
     get_cloud_light,
+    get_source_config,
+    source_category,
+    sources_for_category,
 )
 from exceptions import DataLoaderError
 from nlp.news_sentiment import classify_news_sentiment_batch
@@ -494,10 +498,26 @@ def render_sentiment_news(titles: pd.Series) -> None:
 def render_compare_media(primary_source: str) -> None:
     st.subheader("Порівняння медіа")
     st.markdown("Порівняння топ-уніграм і новинної тональності двох джерел.")
-    other = st.selectbox(
-        "Друге медіа",
-        [name for name in NEWS_SOURCES if name != primary_source],
-    )
+    # Prefer peers from the same sidebar category (Новини / Спорт / …).
+    primary_cat = source_category(primary_source)
+    try:
+        peers = [
+            name
+            for name, cfg in NEWS_SOURCES.items()
+            if name != primary_source
+            and isinstance(cfg, dict)
+            and (primary_cat is None or cfg.get("category") == primary_cat)
+        ]
+    except (AttributeError, TypeError) as exc:
+        logger.warning("Cannot build compare peers: %s", exc)
+        peers = []
+    if not peers:
+        peers = [name for name in NEWS_SOURCES if name != primary_source]
+    if not peers:
+        st.warning("Немає іншого медіа для порівняння в цій категорії.")
+        return
+
+    other = st.selectbox("Друге медіа", peers)
     try:
         df_a = _load_source(primary_source)
         df_b = _load_source(other)
@@ -559,17 +579,26 @@ def render_summarization(df: pd.DataFrame) -> None:
 
 
 def load_data(source_name: str, nlp_function: str) -> None:
-    config = NEWS_SOURCES.get(source_name)
-    if config is None:
+    try:
+        config = get_source_config(source_name)
+    except KeyError:
         st.error(f"Невідоме джерело: {source_name}")
         return
 
     if nlp_function == "Вступ":
-        render_intro(config["intro"])
+        try:
+            render_intro(config.get("intro", ""))
+        except Exception as exc:
+            logger.exception("Intro render failed for %s", source_name)
+            st.error(f"Не вдалося показати вступ: {exc}")
         return
 
     if nlp_function == "Порівняння медіа":
-        render_compare_media(source_name)
+        try:
+            render_compare_media(source_name)
+        except Exception as exc:
+            logger.exception("Compare media failed")
+            st.error(f"Порівняння не вдалося: {exc}")
         return
 
     try:
@@ -625,10 +654,44 @@ def load_data(source_name: str, nlp_function: str) -> None:
         st.error(f"Аналіз не вдався: {exc}")
 
 
+def _select_sidebar_source() -> str | None:
+    """
+    Render Категорія → Медіа controls.
+
+    Returns the selected media name, or ``None`` when the category is empty
+    or Streamlit widgets fail unexpectedly.
+    """
+    try:
+        selected_category = st.sidebar.selectbox("Категорія", MEDIA_CATEGORIES)
+        media_options = sources_for_category(selected_category)
+    except Exception as exc:
+        logger.exception("Sidebar category selection failed")
+        st.error(f"Не вдалося побудувати список категорій: {exc}")
+        return None
+
+    if not media_options:
+        st.sidebar.warning("У цій категорії ще немає медіа.")
+        st.info(
+            f"Категорія «{selected_category}» поки порожня. "
+            "Оберіть іншу категорію зі списку."
+        )
+        return None
+
+    try:
+        return st.sidebar.selectbox("Медіа", media_options)
+    except Exception as exc:
+        logger.exception("Sidebar media selection failed")
+        st.error(f"Не вдалося обрати медіа: {exc}")
+        return None
+
+
 def main() -> None:
     from runtime_env import apply_runtime_env
 
-    apply_runtime_env()
+    try:
+        apply_runtime_env()
+    except Exception as exc:
+        logger.warning("runtime_env apply failed: %s", exc)
 
     st.set_page_config(
         page_title="UkrMediaNLP",
@@ -637,18 +700,19 @@ def main() -> None:
     )
     st.title("Аналіз новин українських медіа")
     st.caption("Збір новин з RSS, скрейпінг та NLP-аналіз українською мовою.")
-    if get_cloud_light():
-        st.info(
-            "Стабільний режим: RoBERTa / емоції вимкнені (щоб Streamlit не падав по RAM). "
-            "Доступні n-грами, NER, LDA, «Тональність (новини)» тощо. "
-            "Для важких моделей локально: `ALLOW_HEAVY_NLP=1` і "
-            "`streamlit run streamlit_app.py`."
-        )
 
     st.sidebar.header("Налаштування")
-    selected_source = st.sidebar.selectbox("Медіа", list(NEWS_SOURCES.keys()))
-    nlp_functions = NLP_FUNCTIONS_LIGHT if get_cloud_light() else NLP_FUNCTIONS_FULL
-    selected_function = st.sidebar.selectbox("Функція", nlp_functions)
+    selected_source = _select_sidebar_source()
+    if not selected_source:
+        return
+
+    try:
+        nlp_functions = NLP_FUNCTIONS_LIGHT if get_cloud_light() else NLP_FUNCTIONS_FULL
+        selected_function = st.sidebar.selectbox("Функція", nlp_functions)
+    except Exception as exc:
+        logger.exception("NLP function select failed")
+        st.error(f"Не вдалося показати функції NLP: {exc}")
+        return
 
     load_data(selected_source, selected_function)
 

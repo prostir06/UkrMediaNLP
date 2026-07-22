@@ -9,7 +9,7 @@ import logging
 
 import streamlit as st
 
-from config import NEWS_SOURCES
+from config import get_source_config
 from data_loader import fetch_articles
 from exceptions import DataLoaderError, NLPAnalysisError
 
@@ -25,14 +25,14 @@ def load_articles(source_name: str, progress_callback=None):
     ``progress_callback`` receives ``(done, total)`` during scrape.
 
     Args:
-        source_name: Key from ``NEWS_SOURCES``.
+        source_name: Key from ``NEWS_SOURCES`` (any sidebar category).
         progress_callback: Optional ``(done, total)`` scrape progress hook.
 
     Raises:
         DataLoaderError: Unknown source or RSS failure.
     """
     try:
-        config = NEWS_SOURCES[source_name]
+        config = get_source_config(source_name)
     except KeyError as exc:
         raise DataLoaderError(
             f"Невідоме джерело: {source_name}",
@@ -40,10 +40,19 @@ def load_articles(source_name: str, progress_callback=None):
         ) from exc
 
     try:
+        feed_url = config["rss_url"]
+        scraper_name = config.get("scraper", "generic")
+    except (KeyError, TypeError) as exc:
+        raise DataLoaderError(
+            f"Некоректна конфігурація джерела: {source_name}",
+            source_name=source_name,
+        ) from exc
+
+    try:
         return fetch_articles(
             source_name=source_name,
-            feed_url=config["rss_url"],
-            scraper_name=config.get("scraper", "generic"),
+            feed_url=feed_url,
+            scraper_name=scraper_name,
             progress_callback=progress_callback,
         )
     except DataLoaderError:

@@ -8,7 +8,7 @@ Streamlit-додаток для збору новин з RSS українськ�
 
 ## Можливості
 
-- **8 RSS-джерел:** NV, Радіо Свобода, Українська правда, Liga.net, RBC-UA, Інтерфакс-Україна, TSN, УНІАН
+- **4 категорії / 29 RSS-джерел:** Новини, Економіка, Спорт, Технології
 - **SSRF-захист** при RSS і скрейпінгу (allowlist доменів, блок private IP)
 - **Паралельний скрейпінг** (до 50 статей, 3 workers, rate limit 1 req/s) + SQLite TTL-кеш
 - **NLP-аналіз українською:**
@@ -16,7 +16,7 @@ Streamlit-додаток для збору новин з RSS українськ�
   - ключові слова та хмара слів (контрастна палітра)
   - статистика тексту, NER, POS, LDA, сумаризація
   - тональність (новини) — завжди; RoBERTa / емоції — лише з `ALLOW_HEAVY_NLP=1`
-  - порівняння медіа
+  - порівняння медіа в межах категорії
 
 ## Структура проєкту
 
@@ -40,7 +40,7 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── requirements-cloud.txt  # Light Cloud (без torch)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
-├── tests/                  # pytest (~207 тестів)
+├── tests/                  # pytest (~228 тестів)
 ├── Dockerfile
 └── docker-compose.yml
 ```
@@ -162,16 +162,14 @@ LIGHT_CLOUD = "1"
 
 ## Підтримувані медіа
 
-| Медіа | RSS |
-|-------|-----|
-| NV | https://nv.ua/ukr/rss/all.xml |
-| Радіо Свобода | https://www.radiosvoboda.org/api/zrqitl-vomx-tpeoumq |
-| Українська правда | https://www.pravda.com.ua/rss/view_mainnews/ |
-| Liga.net | https://news.liga.net/ua/top/rss.xml |
-| RBC-UA | https://www.rbc.ua/static/rss/ukrnet.strong.ukr.rss.xml |
-| Інтерфакс-Україна | https://interfax.com.ua/news/last.rss |
-| TSN | https://tsn.ua/rss/full.rss |
-| УНІАН | https://rss.unian.ua/site/news_ukr.rss |
+Категорії в сайдбарі (**Категорія → Медіа**). Повний реєстр — у `config.NEWS_SOURCES`.
+
+| Категорія | К-сть | Приклади |
+|-----------|------:|----------|
+| Новини | 8 | NV, УП, TSN, УНІАН, … |
+| Економіка | 5 | Економічна правда, Бізнес Цензор, NV (Економіка), … |
+| Спорт | 7 | Football.ua, Champion, Суспільне Спорт, Tribuna, … |
+| Технології | 9 | DOU, AIN.UA, Speka, Mezha, ITC.ua, … |
 
 ## Конфігурація
 

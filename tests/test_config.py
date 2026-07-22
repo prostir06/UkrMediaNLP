@@ -1,16 +1,66 @@
 """Tests for project configuration."""
 
-from config import ARTICLE_COLUMNS, NEWS_SOURCES, NLP_FUNCTIONS_FULL, NLP_FUNCTIONS_LIGHT
+from config import (
+    ARTICLE_COLUMNS,
+    MEDIA_CATEGORIES,
+    NEWS_SOURCES,
+    NLP_FUNCTIONS_FULL,
+    NLP_FUNCTIONS_LIGHT,
+    sources_for_category,
+    validate_news_sources_schema,
+)
 
 
 def test_news_sources_have_required_keys():
-    required = {"rss_url", "scraper", "intro"}
+    required = {"category", "rss_url", "scraper", "intro"}
     for name, config in NEWS_SOURCES.items():
         assert required.issubset(config.keys()), f"Missing keys in {name}"
+    assert validate_news_sources_schema() == []
 
 
 def test_news_sources_count():
-    assert len(NEWS_SOURCES) == 8
+    assert len(NEWS_SOURCES) == 29
+
+
+def test_media_categories_and_news_sources():
+    assert MEDIA_CATEGORIES == (
+        "Новини",
+        "Економіка",
+        "Спорт",
+        "Технології",
+    )
+    news = sources_for_category("Новини")
+    economy = sources_for_category("Економіка")
+    sport = sources_for_category("Спорт")
+    tech = sources_for_category("Технології")
+    assert len(news) == 8
+    assert len(economy) == 5
+    assert len(sport) == 7
+    assert len(tech) == 9
+    assert "УНІАН" in news
+    assert "Економічна правда" in economy
+    assert "Football.ua" in sport
+    assert "NV (Спорт)" in sport
+    assert "DOU" in tech
+    assert "AIN.UA" in tech
+
+
+def test_sport_radio_svoboda_uses_api_rss():
+    url = NEWS_SOURCES["Радіо Свобода (Спорт)"]["rss_url"]
+    assert url.startswith("https://www.radiosvoboda.org/api/")
+    assert "/z/21679" not in url
+
+
+def test_economy_radio_svoboda_uses_api_rss():
+    url = NEWS_SOURCES["Радіо Свобода (Економіка)"]["rss_url"]
+    assert url.startswith("https://www.radiosvoboda.org/api/")
+    assert "/z/2734" not in url
+
+
+def test_epravda_uses_news_rss_not_catalog():
+    url = NEWS_SOURCES["Економічна правда"]["rss_url"]
+    assert "rss/news" in url
+    assert "rss-info" not in url
 
 
 def test_unian_uses_ukrainian_feed():

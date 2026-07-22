@@ -46,14 +46,23 @@ def get_allowed_domains() -> frozenset[str]:
     """
     Build the hostname allowlist from configured RSS feed URLs.
 
+    Covers every sidebar category (Новини / Економіка / Спорт / Технології).
     Includes both full hostnames (e.g. ``rss.unian.ua``) and registrable
     domains (e.g. ``unian.ua``) plus known article-page subdomains.
     """
     domains: set[str] = set()
-    for config in NEWS_SOURCES.values():
+    try:
+        source_configs = list(NEWS_SOURCES.values())
+    except (AttributeError, TypeError) as exc:
+        logger.error("NEWS_SOURCES unavailable for allowlist: %s", exc)
+        source_configs = []
+
+    for config in source_configs:
         try:
-            hostname = _hostname_from_url(config["rss_url"])
-        except (KeyError, TypeError) as exc:
+            if not isinstance(config, dict):
+                continue
+            hostname = _hostname_from_url(str(config.get("rss_url", "")))
+        except (KeyError, TypeError, AttributeError) as exc:
             logger.warning("Invalid NEWS_SOURCES entry skipped: %s", exc)
             continue
         if hostname:
@@ -65,8 +74,11 @@ def get_allowed_domains() -> frozenset[str]:
     # Article pages may live on subdomains not present in RSS URLs.
     extra = {
         "nv.ua",
+        "sport.nv.ua",
+        "biz.nv.ua",
         "radiosvoboda.org",
         "pravda.com.ua",
+        "epravda.com.ua",
         "liga.net",
         "news.liga.net",
         "rbc.ua",
@@ -76,6 +88,24 @@ def get_allowed_domains() -> frozenset[str]:
         "unian.net",
         "rss.unian.ua",
         "rss.unian.net",
+        "champion.com.ua",
+        "football.ua",
+        "suspilne.media",
+        "tribuna.com",
+        "ua.tribuna.com",
+        "rss.ua.tribuna.com",
+        "censor.net",
+        "biz.censor.net",
+        "assets.censor.net",
+        "tech.liga.net",
+        "itc.ua",
+        "feeds.feedburner.com",
+        "dou.ua",
+        "mezha.ua",
+        "dev.ua",
+        "speka.ua",
+        "vctr.media",
+        "ain.ua",
     }
     domains.update(extra)
     return frozenset(domains)

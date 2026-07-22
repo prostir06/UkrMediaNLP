@@ -6,10 +6,21 @@ from url_utils import get_allowed_domains, is_allowed_url
 
 
 def test_allowed_domains_includes_configured_media():
+    get_allowed_domains.cache_clear()
     domains = get_allowed_domains()
     assert "nv.ua" in domains
     assert "pravda.com.ua" in domains
     assert "unian.ua" in domains or "rss.unian.ua" in domains
+
+
+def test_allowed_domains_includes_category_media():
+    get_allowed_domains.cache_clear()
+    domains = get_allowed_domains()
+    assert "dou.ua" in domains
+    assert "epravda.com.ua" in domains
+    assert "football.ua" in domains
+    assert "ain.ua" in domains
+    assert "champion.com.ua" in domains
 
 
 def test_blocks_file_scheme():
