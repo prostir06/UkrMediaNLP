@@ -10,13 +10,18 @@ We therefore load the tokenizer and architecture from
 """
 
 import logging
+import os
 from collections import Counter
+
+# Disable Hugging Face Hub file locking to prevent PermissionError in shared/containerized environments.
+os.environ.setdefault("HF_HUB_DISABLE_DISK_LOCK", "1")
 
 import matplotlib.pyplot as plt
 
 from exceptions import NLPAnalysisError
 
 logger = logging.getLogger(__name__)
+
 
 COSMUS_MODEL = "YShynkarov/ukr-roberta-cosmus-sentiment"
 COSMUS_BASE_MODEL = "youscan/ukr-roberta-base"
@@ -86,6 +91,8 @@ def _format_load_error(model_name: str, exc: Exception) -> str:
         hint = " Встановіть: pip install torch transformers"
     elif "out of memory" in lowered or "oom" in lowered:
         hint = " Недостатньо RAM — спробуйте Docker/VPS (2 GB+)."
+    elif "permission" in lowered or "lock" in lowered:
+        hint = " Помилка прав або блокування кешу Hugging Face (.cache/huggingface). Видаліть застарілі .lock файли або перезапустіть додатку."
     elif "connection" in lowered or "timed out" in lowered or "network" in lowered:
         hint = " Перевірте інтернет і доступ до huggingface.co."
     return f"Не вдалося завантажити модель {model_name}: {cause}.{hint}"
