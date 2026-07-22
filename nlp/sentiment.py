@@ -12,15 +12,47 @@ We therefore load the tokenizer and architecture from
 import logging
 import os
 from collections import Counter
-
-# Disable Hugging Face Hub file locking to prevent PermissionError in shared/containerized environments.
-os.environ.setdefault("HF_HUB_DISABLE_DISK_LOCK", "1")
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
 from exceptions import NLPAnalysisError
 
+# Disable Hugging Face Hub file locking to prevent PermissionError in shared/containerized environments.
+os.environ.setdefault("HF_HUB_DISABLE_DISK_LOCK", "1")
 logger = logging.getLogger(__name__)
+
+
+def _ensure_writable_hf_cache() -> None:
+    """Ensure Hugging Face cache directory is writable, falling back to /tmp/hf_cache if needed."""
+    current_hf_home = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE")
+    if not current_hf_home:
+        current_hf_home = str(Path.home() / ".cache" / "huggingface")
+
+    try:
+        path = Path(current_hf_home)
+        path.mkdir(parents=True, exist_ok=True)
+        test_file = path / f".write_test_{os.getpid()}"
+        test_file.touch()
+        test_file.unlink()
+    except (OSError, PermissionError) as exc:
+        logger.warning(
+            "HF cache directory %s is not writable (%s); switching HF_HOME to /tmp/hf_cache",
+            current_hf_home,
+            exc,
+        )
+        fallback = Path("/tmp/hf_cache")
+        try:
+            fallback.mkdir(parents=True, exist_ok=True)
+            os.environ["HF_HOME"] = str(fallback)
+            os.environ["TRANSFORMERS_CACHE"] = str(fallback)
+            os.environ["HF_HUB_CACHE"] = str(fallback)
+        except Exception as fallback_exc:
+            logger.warning("Failed setting fallback HF cache directory: %s", fallback_exc)
+
+
+_ensure_writable_hf_cache()
+
 
 
 COSMUS_MODEL = "YShynkarov/ukr-roberta-cosmus-sentiment"
@@ -150,19 +182,38 @@ def _build_cosmus_pipeline_from_weights():
         pipeline,
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(COSMUS_BASE_MODEL)
-    model = AutoModelForSequenceClassification.from_pretrained(
-        COSMUS_BASE_MODEL,
-        num_labels=len(COSMUS_ID2LABEL),
-        id2label=COSMUS_ID2LABEL,
-        label2id=COSMUS_LABEL2ID,
-        ignore_mismatched_sizes=True,
-    )
-
-    weights_path = hf_hub_download(
-        repo_id=COSMUS_MODEL,
-        filename=COSMUS_WEIGHTS_FILE,
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(COSMUS_BASE_MODEL)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            COSMUS_BASE_MODEL,
+            num_labels=len(COSMUS_ID2LABEL),
+            id2label=COSMUS_ID2LABEL,
+            label2id=COSMUS_LABEL2ID,
+            ignore_mismatched_sizes=True,
+        )
+        weights_path = hf_hub_download(
+            repo_id=COSMUS_MODEL,
+            filename=COSMUS_WEIGHTS_FILE,
+        )
+    except (PermissionError, OSError) as exc:
+        logger.warning("PermissionError loading COSMUS model (%s); retrying with /tmp/hf_cache", exc)
+        tmp_dir = str(Path("/tmp/hf_cache"))
+        Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+        os.environ["HF_HOME"] = tmp_dir
+        os.environ["TRANSFORMERS_CACHE"] = tmp_dir
+        os.environ["HF_HUB_CACHE"] = tmp_dir
+        tokenizer = AutoTokenizer.from_pretrained(COSMUS_BASE_MODEL)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            COSMUS_BASE_MODEL,
+            num_labels=len(COSMUS_ID2LABEL),
+            id2label=COSMUS_ID2LABEL,
+            label2id=COSMUS_LABEL2ID,
+            ignore_mismatched_sizes=True,
+        )
+        weights_path = hf_hub_download(
+            repo_id=COSMUS_MODEL,
+            filename=COSMUS_WEIGHTS_FILE,
+        )
     state_dict = load_file(weights_path)
 
     # Remap common key prefixes if the checkpoint was saved without HF layout.
@@ -240,8 +291,19 @@ def load_emotions_model():
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
-        model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
+            model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+        except (PermissionError, OSError) as exc:
+            logger.warning("PermissionError loading emotions model (%s); retrying with /tmp/hf_cache", exc)
+            tmp_dir = str(Path("/tmp/hf_cache"))
+            Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+            os.environ["HF_HOME"] = tmp_dir
+            os.environ["TRANSFORMERS_CACHE"] = tmp_dir
+            os.environ["HF_HUB_CACHE"] = tmp_dir
+            tokenizer = AutoTokenizer.from_pretrained(EMOTIONS_MODEL)
+            model = AutoModelForSequenceClassification.from_pretrained(EMOTIONS_MODEL)
+
         model = _quantize_model_if_cpu(model)
         model.eval()
         return tokenizer, model, torch
