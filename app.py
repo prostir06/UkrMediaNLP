@@ -17,6 +17,7 @@ from config import (
     MAX_POS_ARTICLES,
     MAX_SENTIMENT_TITLES,
     MAX_SUMMARY_ARTICLES,
+    MAX_TREND_TERMS,
     MEDIA_CATEGORIES,
     NEWS_SOURCES,
     NGRAM_DESCRIPTION,
@@ -29,7 +30,14 @@ from config import (
     sources_for_category,
 )
 from exceptions import DataLoaderError
-from nlp.corpus import search_corpus
+from nlp.corpus import (
+    aggregate_trends,
+    aggregate_trends_by_source,
+    parse_manual_terms,
+    search_corpus,
+    suggest_lda_labels,
+    suggest_terms,
+)
 from nlp.news_sentiment import classify_news_sentiment_batch
 from nlp.preprocessing import NER_LABELS_UA
 from nlp_analysis import (
@@ -48,7 +56,11 @@ from nlp_analysis import (
     render_wordclouds,
     run_text_summarization,
 )
-from ui.corpus_charts import build_source_hit_bar
+from ui.corpus_charts import (
+    build_source_hit_bar,
+    build_source_trends_line,
+    build_trends_line,
+)
 from ui.corpus_controls import (
     CORPUS_FUNCTIONS,
     load_corpus_into_session,
@@ -663,6 +675,83 @@ def render_corpus_search() -> None:
     )
 
 
+def render_topic_trends() -> None:
+    """Render topic trends for the loaded multi-source corpus."""
+    corpus_df = st.session_state.get("corpus_df")
+    if not isinstance(corpus_df, pd.DataFrame) or corpus_df.empty:
+        st.info("Спочатку завантажте корпус у бічній панелі.")
+        return
+
+    st.subheader("Тренди тем")
+    automatic_terms = suggest_terms(corpus_df, 15)
+    lda_terms: list[str] = []
+    if not get_cloud_light():
+        with st.expander("Поглиблено (LDA)"):
+            try:
+                lda_terms = suggest_lda_labels(corpus_df)
+            except Exception as exc:
+                logger.warning("LDA topic suggestions failed: %s", exc)
+                lda_terms = []
+            if not lda_terms:
+                st.warning("Не вдалося запропонувати теми за допомогою LDA.")
+            else:
+                st.caption("LDA: " + ", ".join(lda_terms))
+
+    manual_text = st.text_area(
+        "Власні теми (по одній у рядку)",
+        key="topic_trends_manual_terms",
+    )
+    manual_terms = parse_manual_terms(manual_text)
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for term in [*automatic_terms, *lda_terms, *manual_terms]:
+        normalized = str(term).strip()
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            seen.add(key)
+            candidates.append(normalized)
+
+    selected_terms = st.multiselect(
+        "Теми для порівняння",
+        candidates,
+        max_selections=MAX_TREND_TERMS,
+        key="topic_trends_terms",
+    )
+    frequency_label = st.radio(
+        "Групування",
+        ("День", "Тиждень"),
+        horizontal=True,
+        key="topic_trends_frequency",
+    )
+    frequency = "D" if frequency_label == "День" else "W-MON"
+
+    if not selected_terms:
+        st.caption("Оберіть хоча б одну тему.")
+        return
+
+    trend_figure = build_trends_line(
+        aggregate_trends(corpus_df, list(selected_terms), freq=frequency)
+    )
+    if trend_figure is None:
+        st.warning("Для обраних тем не знайдено даних із датами.")
+    else:
+        st.plotly_chart(trend_figure, use_container_width=True)
+
+    comparison_term = st.selectbox(
+        "Тема для порівняння медіа",
+        selected_terms,
+        key="topic_trends_source_term",
+    )
+    source_figure = build_source_trends_line(
+        aggregate_trends_by_source(corpus_df, comparison_term, freq=frequency)
+    )
+    if source_figure is None:
+        st.warning("Немає даних для порівняння медіа за цією темою.")
+    else:
+        st.plotly_chart(source_figure, use_container_width=True)
+
+
 def load_data(source_name: str, nlp_function: str) -> None:
     if nlp_function == "Пошук у корпусі":
         try:
@@ -673,7 +762,11 @@ def load_data(source_name: str, nlp_function: str) -> None:
         return
 
     if nlp_function == "Тренди тем":
-        st.info("Інтерфейс трендів тем буде додано в наступному оновленні.")
+        try:
+            render_topic_trends()
+        except Exception as exc:
+            logger.exception("Topic trends render failed")
+            st.error(f"Не вдалося показати тренди тем: {exc}")
         return
 
     try:

@@ -146,6 +146,68 @@ def test_load_data_dispatches_corpus_search_without_loading_source(mock_st, monk
     render.assert_called_once_with()
 
 
+def test_render_topic_trends_wires_hybrid_terms_and_charts(mock_st, monkeypatch):
+    from app import render_topic_trends
+
+    corpus = pd.DataFrame(
+        {
+            "title": ["Футбол", "Матч"],
+            "content": ["Збірна перемогла", "Футбол сьогодні"],
+            "published": ["2024-03-01", "2024-03-02"],
+            "source": ["A", "B"],
+        }
+    )
+    mock_st.session_state = {"corpus_df": corpus}
+    expander = MagicMock()
+    expander.__enter__.return_value = expander
+    expander.__exit__.return_value = False
+    mock_st.expander.return_value = expander
+    mock_st.text_area.return_value = "збірна\nфутбол"
+    mock_st.multiselect.return_value = ["футбол", "збірна"]
+    mock_st.radio.return_value = "Тиждень"
+    mock_st.selectbox.return_value = "футбол"
+
+    monkeypatch.setattr("app.get_cloud_light", lambda: False)
+    monkeypatch.setattr("app.suggest_terms", lambda df, n: ["футбол", "матч"])
+    monkeypatch.setattr("app.suggest_lda_labels", lambda df: ["спорт"])
+    trends = pd.DataFrame({"bucket": [pd.Timestamp("2024-03-04")], "term": ["футбол"], "count": [2]})
+    source_trends = pd.DataFrame(
+        {"bucket": [pd.Timestamp("2024-03-04")], "source": ["A"], "count": [1]}
+    )
+    aggregate = MagicMock(return_value=trends)
+    aggregate_by_source = MagicMock(return_value=source_trends)
+    monkeypatch.setattr("app.aggregate_trends", aggregate)
+    monkeypatch.setattr("app.aggregate_trends_by_source", aggregate_by_source)
+    monkeypatch.setattr("app.build_trends_line", MagicMock(return_value="trend-figure"))
+    monkeypatch.setattr(
+        "app.build_source_trends_line",
+        MagicMock(return_value="source-figure"),
+    )
+
+    render_topic_trends()
+
+    aggregate.assert_called_once_with(corpus, ["футбол", "збірна"], freq="W-MON")
+    aggregate_by_source.assert_called_once_with(corpus, "футбол", freq="W-MON")
+    assert mock_st.plotly_chart.call_count == 2
+    options = mock_st.multiselect.call_args.args[1]
+    assert options == ["футбол", "матч", "спорт", "збірна"]
+
+
+def test_load_data_dispatches_topic_trends_without_loading_source(mock_st, monkeypatch):
+    from app import load_data
+
+    render = MagicMock()
+    monkeypatch.setattr("app.render_topic_trends", render)
+    monkeypatch.setattr(
+        "app._load_source",
+        MagicMock(side_effect=AssertionError("single source must not be loaded")),
+    )
+
+    load_data("NV", "Тренди тем")
+
+    render.assert_called_once_with()
+
+
 def test_render_compare_media(mock_st, monkeypatch):
     from app import render_compare_media
 
