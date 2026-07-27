@@ -86,3 +86,24 @@ def test_aggregate_trends_day_and_by_source():
     by_src = aggregate_trends_by_source(df, "футбол", freq="D")
     assert set(by_src.columns) >= {"bucket", "source", "count"}
     assert by_src["count"].sum() == 2
+
+
+def test_aggregate_trends_weekly_w_mon():
+    from nlp.corpus import aggregate_trends
+
+    # 2024-03-04 Mon, 2024-03-06 Wed — same Monday-start week
+    df = pd.DataFrame(
+        {
+            "title": ["футбол понеділок", "футбол середа"],
+            "content": ["", ""],
+            "description": ["", ""],
+            "published": ["2024-03-04", "2024-03-06"],
+            "source": ["A", "A"],
+            "link": ["u1", "u2"],
+        }
+    )
+    trends = aggregate_trends(df, ["футбол"], freq="W-MON")
+    assert len(trends) == 1
+    assert trends.iloc[0]["count"] == 2
+    mon = pd.Timestamp("2024-03-04").normalize()
+    assert pd.Timestamp(trends.iloc[0]["bucket"]).normalize() == mon

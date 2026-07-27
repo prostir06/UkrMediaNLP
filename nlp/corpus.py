@@ -10,9 +10,6 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Overridable in tests; production path imports from nlp.ngrams inside suggest_terms.
-get_top_n_words = None
-
 
 def parse_published(value: object) -> pd.Timestamp:
     """Parse RSS/published field to Timestamp; return NaT on failure."""
@@ -192,16 +189,13 @@ def suggest_terms(df: pd.DataFrame, n: int = 15) -> list[str]:
     if df is None or df.empty or n <= 0:
         return []
     try:
+        from nlp.ngrams import get_top_n_words
         from nlp.preprocessing import preprocess_texts
-
-        get_top_n_words_fn = get_top_n_words
-        if get_top_n_words_fn is None:
-            from nlp.ngrams import get_top_n_words as get_top_n_words_fn
 
         titles = preprocess_texts(df.get("title", pd.Series(dtype=str)))
         contents = df.get("content", pd.Series(dtype=str)).fillna("").astype(str).str.slice(0, 200)
         corpus = (titles.fillna("") + " " + contents).tolist()
-        return [word for word, _count in get_top_n_words_fn(corpus, n=n)]
+        return [word for word, _count in get_top_n_words(corpus, n=n)]
     except Exception as exc:
         logger.warning("suggest_terms failed: %s", exc)
         return []
@@ -221,8 +215,12 @@ def suggest_lda_labels(df: pd.DataFrame, number_topics: int = 5) -> list[str]:
         return []
 
 
-def _bucket_period(freq: str) -> str:
-    return "W-MON" if str(freq).upper().startswith("W") else "D"
+def _to_bucket(series: pd.Series, freq: str) -> pd.Series:
+    ts = pd.to_datetime(series)
+    if str(freq).upper().startswith("W"):
+        # Monday-start week
+        return (ts - pd.to_timedelta(ts.dt.weekday, unit="D")).dt.normalize()
+    return ts.dt.normalize()
 
 
 def _term_hit_mask(
@@ -253,8 +251,7 @@ def aggregate_trends(
     rows: list[dict] = []
     try:
         work = work.copy()
-        period = _bucket_period(freq)
-        work["bucket"] = work["published_dt"].dt.to_period(period).dt.start_time
+        work["bucket"] = _to_bucket(work["published_dt"], freq)
         for term in terms:
             mask = _term_hit_mask(work, term, fields, whole_word)
             counts = work.loc[mask].groupby("bucket").size()
@@ -279,8 +276,7 @@ def aggregate_trends_by_source(
         return pd.DataFrame(columns=["bucket", "source", "count"])
     try:
         work = work.copy()
-        period = _bucket_period(freq)
-        work["bucket"] = work["published_dt"].dt.to_period(period).dt.start_time
+        work["bucket"] = _to_bucket(work["published_dt"], freq)
         mask = _term_hit_mask(work, term, fields, whole_word)
         counts = work.loc[mask].groupby(["bucket", "source"]).size().reset_index(name="count")
         return counts.sort_values(["bucket", "source"]).reset_index(drop=True)
