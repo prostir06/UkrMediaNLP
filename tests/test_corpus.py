@@ -107,3 +107,14 @@ def test_aggregate_trends_weekly_w_mon():
     assert trends.iloc[0]["count"] == 2
     mon = pd.Timestamp("2024-03-04").normalize()
     assert pd.Timestamp(trends.iloc[0]["bucket"]).normalize() == mon
+
+
+def test_merge_source_frames():
+    from nlp.corpus import merge_source_frames
+
+    a = pd.DataFrame({"title": ["t1"], "published": ["2024-05-01"], "content": ["x"], "source": ["A"]})
+    b = pd.DataFrame({"title": ["t2"], "published": ["2024-05-02"], "content": ["y"], "source": ["B"]})
+    merged = merge_source_frames([a, b], max_rows=10)
+    assert len(merged) == 2
+    assert set(merged["source"]) == {"A", "B"}
+    assert "published_dt" in merged.columns

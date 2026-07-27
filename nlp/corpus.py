@@ -78,6 +78,28 @@ def cap_corpus(df: pd.DataFrame, max_rows: int) -> pd.DataFrame:
         return work.head(max_rows)
 
 
+def merge_source_frames(frames: list[pd.DataFrame], max_rows: int) -> pd.DataFrame:
+    clean: list[pd.DataFrame] = []
+    for frame in frames:
+        if frame is None or getattr(frame, "empty", True):
+            continue
+        try:
+            part = frame.copy()
+            if "source" not in part.columns:
+                part["source"] = ""
+            clean.append(part)
+        except Exception as exc:
+            logger.warning("skip bad frame: %s", exc)
+    if not clean:
+        return pd.DataFrame()
+    try:
+        merged = pd.concat(clean, ignore_index=True)
+    except Exception as exc:
+        logger.exception("concat failed: %s", exc)
+        return pd.DataFrame()
+    return cap_corpus(ensure_published_dt(merged), max_rows=max_rows)
+
+
 def article_search_text(row: pd.Series, fields: Iterable[str]) -> str:
     parts: list[str] = []
     for field in fields:
