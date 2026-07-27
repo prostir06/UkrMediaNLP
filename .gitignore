@@ -48,3 +48,6 @@ desktop.ini
 _tmp_*.py
 *.bak
 *.tmp
+
+.worktrees/
+.superpowers/
