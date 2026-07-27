@@ -10,6 +10,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Overridable in tests; production path imports from nlp.ngrams inside suggest_terms.
+get_top_n_words = None
+
 
 def parse_published(value: object) -> pd.Timestamp:
     """Parse RSS/published field to Timestamp; return NaT on failure."""
@@ -168,3 +171,119 @@ def search_corpus(
         ascending=[False, False],
         na_position="last",
     ).reset_index(drop=True)
+
+
+def parse_manual_terms(text: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        term = line.strip()
+        if not term:
+            continue
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(term)
+    return out
+
+
+def suggest_terms(df: pd.DataFrame, n: int = 15) -> list[str]:
+    if df is None or df.empty or n <= 0:
+        return []
+    try:
+        from nlp.preprocessing import preprocess_texts
+
+        get_top_n_words_fn = get_top_n_words
+        if get_top_n_words_fn is None:
+            from nlp.ngrams import get_top_n_words as get_top_n_words_fn
+
+        titles = preprocess_texts(df.get("title", pd.Series(dtype=str)))
+        contents = df.get("content", pd.Series(dtype=str)).fillna("").astype(str).str.slice(0, 200)
+        corpus = (titles.fillna("") + " " + contents).tolist()
+        return [word for word, _count in get_top_n_words_fn(corpus, n=n)]
+    except Exception as exc:
+        logger.warning("suggest_terms failed: %s", exc)
+        return []
+
+
+def suggest_lda_labels(df: pd.DataFrame, number_topics: int = 5) -> list[str]:
+    if df is None or df.empty:
+        return []
+    try:
+        from nlp.topics import run_topic_modeling
+
+        content = df.get("content", pd.Series(dtype=str)).fillna("").astype(str)
+        labels = run_topic_modeling(content, number_topics=number_topics, number_words=5)
+        return list(labels or [])
+    except Exception as exc:
+        logger.warning("suggest_lda_labels soft-failed: %s", exc)
+        return []
+
+
+def _bucket_period(freq: str) -> str:
+    return "W-MON" if str(freq).upper().startswith("W") else "D"
+
+
+def _term_hit_mask(
+    df: pd.DataFrame,
+    term: str,
+    fields: Iterable[str],
+    whole_word: bool,
+) -> pd.Series:
+    field_list = tuple(fields) or ("title", "content")
+
+    def _hit(row: pd.Series) -> bool:
+        return row_matches(article_search_text(row, field_list), term, whole_word=whole_word)
+
+    return df.apply(_hit, axis=1)
+
+
+def aggregate_trends(
+    df: pd.DataFrame,
+    terms: list[str],
+    freq: str = "D",
+    fields: Iterable[str] = ("title", "content"),
+    whole_word: bool = False,
+) -> pd.DataFrame:
+    work = ensure_published_dt(df)
+    work = work.dropna(subset=["published_dt"])
+    if work.empty or not terms:
+        return pd.DataFrame(columns=["bucket", "term", "count"])
+    rows: list[dict] = []
+    try:
+        work = work.copy()
+        period = _bucket_period(freq)
+        work["bucket"] = work["published_dt"].dt.to_period(period).dt.start_time
+        for term in terms:
+            mask = _term_hit_mask(work, term, fields, whole_word)
+            counts = work.loc[mask].groupby("bucket").size()
+            for bucket, count in counts.items():
+                rows.append({"bucket": bucket, "term": term, "count": int(count)})
+    except Exception as exc:
+        logger.exception("aggregate_trends failed: %s", exc)
+        return pd.DataFrame(columns=["bucket", "term", "count"])
+    return pd.DataFrame(rows).sort_values(["bucket", "term"]).reset_index(drop=True)
+
+
+def aggregate_trends_by_source(
+    df: pd.DataFrame,
+    term: str,
+    freq: str = "D",
+    fields: Iterable[str] = ("title", "content"),
+    whole_word: bool = False,
+) -> pd.DataFrame:
+    work = ensure_published_dt(df)
+    work = work.dropna(subset=["published_dt"])
+    if work.empty or not str(term).strip():
+        return pd.DataFrame(columns=["bucket", "source", "count"])
+    try:
+        work = work.copy()
+        period = _bucket_period(freq)
+        work["bucket"] = work["published_dt"].dt.to_period(period).dt.start_time
+        mask = _term_hit_mask(work, term, fields, whole_word)
+        counts = work.loc[mask].groupby(["bucket", "source"]).size().reset_index(name="count")
+        return counts.sort_values(["bucket", "source"]).reset_index(drop=True)
+    except Exception as exc:
+        logger.exception("aggregate_trends_by_source failed: %s", exc)
+        return pd.DataFrame(columns=["bucket", "source", "count"])

@@ -65,3 +65,24 @@ def test_search_empty_query_returns_empty():
 
     df = pd.DataFrame({"title": ["a"], "content": ["b"], "description": [""], "published": ["2024-01-01"], "source": ["A"], "link": ["u"]})
     assert search_corpus(df, "   ").empty
+
+
+def test_aggregate_trends_day_and_by_source():
+    from nlp.corpus import aggregate_trends, aggregate_trends_by_source
+
+    df = pd.DataFrame(
+        {
+            "title": ["футбол сьогодні", "футбол вчора", "теніс"],
+            "content": ["гра", "гра", "сет"],
+            "description": ["", "", ""],
+            "published": ["2024-03-01", "2024-03-02", "2024-03-02"],
+            "source": ["A", "B", "A"],
+            "link": ["u1", "u2", "u3"],
+        }
+    )
+    trends = aggregate_trends(df, ["футбол"], freq="D")
+    assert trends["count"].sum() == 2
+    assert set(trends.columns) >= {"bucket", "term", "count"}
+    by_src = aggregate_trends_by_source(df, "футбол", freq="D")
+    assert set(by_src.columns) >= {"bucket", "source", "count"}
+    assert by_src["count"].sum() == 2
