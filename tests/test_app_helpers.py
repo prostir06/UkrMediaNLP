@@ -119,6 +119,33 @@ def test_load_data_unknown_source(mock_st):
     mock_st.error.assert_called()
 
 
+def test_render_corpus_search_requires_corpus(mock_st):
+    from app import render_corpus_search
+
+    mock_st.session_state = {}
+    render_corpus_search()
+    mock_st.info.assert_called_once()
+
+
+def test_load_data_dispatches_corpus_search_without_loading_source(mock_st, monkeypatch):
+    from app import load_data
+
+    render = MagicMock()
+    monkeypatch.setattr("app.render_corpus_search", render)
+    monkeypatch.setattr(
+        "app.get_source_config",
+        MagicMock(side_effect=AssertionError("single-source config must not be loaded")),
+    )
+    monkeypatch.setattr(
+        "app._load_source",
+        MagicMock(side_effect=AssertionError("single source must not be loaded")),
+    )
+
+    load_data("NV", "Пошук у корпусі")
+
+    render.assert_called_once_with()
+
+
 def test_render_compare_media(mock_st, monkeypatch):
     from app import render_compare_media
 

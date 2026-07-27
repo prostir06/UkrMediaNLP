@@ -29,6 +29,7 @@ from config import (
     sources_for_category,
 )
 from exceptions import DataLoaderError
+from nlp.corpus import search_corpus
 from nlp.news_sentiment import classify_news_sentiment_batch
 from nlp.preprocessing import NER_LABELS_UA
 from nlp_analysis import (
@@ -46,6 +47,12 @@ from nlp_analysis import (
     preprocess,
     render_wordclouds,
     run_text_summarization,
+)
+from ui.corpus_charts import build_source_hit_bar
+from ui.corpus_controls import (
+    CORPUS_FUNCTIONS,
+    load_corpus_into_session,
+    render_corpus_sidebar,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -578,7 +585,97 @@ def render_summarization(df: pd.DataFrame) -> None:
     run_text_summarization(df, sentence_count=3, max_articles=sample_n)
 
 
+def render_corpus_search() -> None:
+    """Render search controls and results for the loaded multi-source corpus."""
+    corpus_df = st.session_state.get("corpus_df")
+    if not isinstance(corpus_df, pd.DataFrame) or corpus_df.empty:
+        st.info("Спочатку завантажте корпус у бічній панелі.")
+        return
+
+    st.subheader("Пошук у корпусі")
+    query = st.text_input("Пошуковий запит", key="corpus_search_query")
+    field_mode = st.radio(
+        "Шукати в",
+        ("Заголовках і текстах", "Лише заголовках", "Лише текстах"),
+        horizontal=True,
+        key="corpus_search_fields",
+    )
+    field_map = {
+        "Заголовках і текстах": ("title", "content"),
+        "Лише заголовках": ("title",),
+        "Лише текстах": ("content",),
+    }
+    col_word, col_lemma = st.columns(2)
+    with col_word:
+        whole_word = st.checkbox(
+            "Лише ціле слово",
+            value=False,
+            key="corpus_search_whole_word",
+        )
+    with col_lemma:
+        use_lemmas = st.checkbox(
+            "Враховувати леми",
+            value=False,
+            key="corpus_search_lemmas",
+        )
+
+    if not str(query).strip():
+        st.caption("Введіть слово або фразу для пошуку.")
+        return
+
+    try:
+        results = search_corpus(
+            corpus_df,
+            query=str(query),
+            fields=field_map.get(field_mode, ("title", "content")),
+            whole_word=bool(whole_word),
+            use_lemmas=bool(use_lemmas),
+        )
+    except Exception as exc:
+        logger.exception("Corpus search failed")
+        st.error(f"Пошук у корпусі не вдався: {exc}")
+        return
+
+    source_count = results["source"].nunique() if "source" in results.columns else 0
+    metric_hits, metric_sources = st.columns(2)
+    metric_hits.metric("Знайдено статей", len(results))
+    metric_sources.metric("Медіа зі знахідками", int(source_count))
+
+    if results.empty:
+        st.warning("За вашим запитом нічого не знайдено.")
+        return
+
+    if "source" in results.columns:
+        figure = build_source_hit_bar(results["source"].fillna("").value_counts())
+        if figure is not None:
+            st.plotly_chart(figure, use_container_width=True)
+
+    date_column = "published_dt" if "published_dt" in results.columns else "published"
+    visible_columns = [
+        column
+        for column in ("title", "link", date_column, "source", "snippet")
+        if column in results.columns
+    ]
+    st.dataframe(
+        results[visible_columns],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def load_data(source_name: str, nlp_function: str) -> None:
+    if nlp_function == "Пошук у корпусі":
+        try:
+            render_corpus_search()
+        except Exception as exc:
+            logger.exception("Corpus search render failed")
+            st.error(f"Пошук у корпусі не вдався: {exc}")
+        return
+
+    if nlp_function == "Тренди тем":
+        st.info("Інтерфейс трендів тем буде додано в наступному оновленні.")
+        return
+
     try:
         config = get_source_config(source_name)
     except KeyError:
@@ -713,6 +810,49 @@ def main() -> None:
         logger.exception("NLP function select failed")
         st.error(f"Не вдалося показати функції NLP: {exc}")
         return
+
+    if selected_function in CORPUS_FUNCTIONS:
+        category = source_category(selected_source)
+        if category is None:
+            st.error("Не вдалося визначити категорію для корпусу.")
+            return
+        try:
+            corpus_controls = render_corpus_sidebar(category, show_lda_toggle=False)
+        except Exception as exc:
+            logger.exception("Corpus sidebar render failed")
+            st.error(f"Не вдалося показати налаштування корпусу: {exc}")
+            return
+
+        if corpus_controls["load_clicked"]:
+            sources = corpus_controls["sources"]
+            if not sources:
+                st.warning("Оберіть хоча б одне медіа для корпусу.")
+            else:
+                try:
+                    with st.spinner("Завантаження корпусу..."):
+                        corpus_df, warnings = load_corpus_into_session(
+                            sources=sources,
+                            date_from=corpus_controls["date_from"],
+                            date_to=corpus_controls["date_to"],
+                            include_missing=corpus_controls["include_missing"],
+                            category=category,
+                            load_articles_fn=load_articles,
+                        )
+                    st.session_state["corpus_df"] = corpus_df
+                    st.session_state["corpus_sources"] = list(sources)
+                    st.session_state["corpus_category"] = category
+                    st.session_state["corpus_loaded_at"] = pd.Timestamp.now()
+                    # Date controls already persist under corpus_date_from/to
+                    # via their Streamlit widget keys.
+                    for warning in warnings:
+                        st.warning(f"Не вдалося завантажити джерело: {warning}")
+                    if corpus_df.empty:
+                        st.warning("Корпус порожній: статті за заданими умовами не знайдено.")
+                    else:
+                        st.success(f"Корпус завантажено: {len(corpus_df)} статей.")
+                except Exception as exc:
+                    logger.exception("Corpus load failed")
+                    st.error(f"Не вдалося завантажити корпус: {exc}")
 
     load_data(selected_source, selected_function)
 
