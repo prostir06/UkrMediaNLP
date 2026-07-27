@@ -35,3 +35,33 @@ def test_filter_by_date_and_cap():
     capped = cap_corpus(df, max_rows=1)
     assert len(capped) == 1
     assert capped.iloc[0]["title"] == "b"
+
+
+def test_search_corpus_phrase_and_whole_word():
+    from nlp.corpus import search_corpus
+
+    df = pd.DataFrame(
+        {
+            "title": ["Перемога збірної України", "Економіка зростає"],
+            "content": ["матч завершився перемогою", "ринок акцій"],
+            "description": ["", ""],
+            "published": ["2024-02-01", "2024-02-02"],
+            "source": ["A", "B"],
+            "link": ["https://a", "https://b"],
+        }
+    )
+    hits = search_corpus(df, "перемога", fields=("title", "content"), whole_word=False)
+    assert len(hits) == 1
+    assert "перемог" in hits.iloc[0]["snippet"].lower() or "Перемог" in hits.iloc[0]["title"]
+
+    whole = search_corpus(df, "зро", fields=("title",), whole_word=True)
+    assert len(whole) == 0
+    phrase = search_corpus(df, "збірної України", fields=("title",), whole_word=False)
+    assert len(phrase) == 1
+
+
+def test_search_empty_query_returns_empty():
+    from nlp.corpus import search_corpus
+
+    df = pd.DataFrame({"title": ["a"], "content": ["b"], "description": [""], "published": ["2024-01-01"], "source": ["A"], "link": ["u"]})
+    assert search_corpus(df, "   ").empty
