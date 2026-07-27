@@ -466,6 +466,8 @@ NLP_FUNCTIONS_FULL = [
     "Сумаризація",
     "Частини мови",
     "Порівняння медіа",
+    "Пошук у корпусі",
+    "Тренди тем",
 ]
 
 NLP_FUNCTIONS_LIGHT = [
@@ -483,6 +485,8 @@ NLP_FUNCTIONS_LIGHT = [
     "Сумаризація",
     "Частини мови",
     "Порівняння медіа",
+    "Пошук у корпусі",
+    "Тренди тем",
 ]
 
 NLP_FUNCTIONS = NLP_FUNCTIONS_LIGHT if get_cloud_light() else NLP_FUNCTIONS_FULL
@@ -513,6 +517,9 @@ MAX_ARTICLES = _env_int("MAX_ARTICLES", 50)
 MAX_SENTIMENT_TITLES = _env_int("MAX_SENTIMENT_TITLES", 30)
 MAX_SUMMARY_ARTICLES = _env_int("MAX_SUMMARY_ARTICLES", 10)
 MAX_POS_ARTICLES = _env_int("MAX_POS_ARTICLES", 10)
+MAX_CORPUS_SOURCES = _env_int("MAX_CORPUS_SOURCES", 10)
+MAX_CORPUS_ARTICLES_TOTAL = _env_int("MAX_CORPUS_ARTICLES_TOTAL", 300)
+MAX_TREND_TERMS = _env_int("MAX_TREND_TERMS", 8)
 MAX_POS_CONTENT_CHARS = _env_int("MAX_POS_CONTENT_CHARS", 5000)
 ARTICLE_CACHE_ENABLED = os.environ.get("ARTICLE_CACHE", "1").lower() not in {
     "0",

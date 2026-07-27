@@ -158,3 +158,21 @@ def test_get_cloud_light_secrets_exception_keeps_env_allow(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", fake_st)
     # Env allow still wins when secrets blow up.
     assert get_cloud_light() is False
+
+
+def test_corpus_config_and_functions():
+    from config import (
+        MAX_CORPUS_ARTICLES_TOTAL,
+        MAX_CORPUS_SOURCES,
+        MAX_TREND_TERMS,
+        NLP_FUNCTIONS_FULL,
+        NLP_FUNCTIONS_LIGHT,
+    )
+
+    assert MAX_CORPUS_SOURCES == 10
+    assert MAX_CORPUS_ARTICLES_TOTAL == 300
+    assert MAX_TREND_TERMS == 8
+    assert "Пошук у корпусі" in NLP_FUNCTIONS_FULL
+    assert "Тренди тем" in NLP_FUNCTIONS_FULL
+    assert "Пошук у корпусі" in NLP_FUNCTIONS_LIGHT
+    assert "Тренди тем" in NLP_FUNCTIONS_LIGHT
