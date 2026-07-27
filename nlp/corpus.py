@@ -12,27 +12,32 @@ logger = logging.getLogger(__name__)
 
 
 def parse_published(value: object) -> pd.Timestamp:
-    """Parse RSS/published field to Timestamp; return NaT on failure."""
+    """Parse a date as timezone-naive UTC; return NaT on failure."""
     if value is None:
         return pd.NaT
     text = str(value).strip()
     if not text:
         return pd.NaT
     try:
-        return pd.to_datetime(text, utc=False, errors="coerce")
+        parsed = pd.to_datetime(text, utc=True, errors="coerce")
+        return parsed.tz_localize(None)
     except (TypeError, ValueError) as exc:
         logger.debug("parse_published failed for %r: %s", value, exc)
         return pd.NaT
 
 
 def ensure_published_dt(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy with ``published_dt`` column."""
+    """Return a copy with a timezone-naive UTC ``published_dt`` column."""
     out = df.copy()
     try:
-        if "published" not in out.columns:
+        if "published" in out.columns:
+            source = out["published"]
+        elif "published_dt" in out.columns:
+            source = out["published_dt"]
+        else:
             out["published_dt"] = pd.NaT
             return out
-        out["published_dt"] = out["published"].map(parse_published)
+        out["published_dt"] = source.map(parse_published)
     except Exception as exc:
         logger.warning("ensure_published_dt failed: %s", exc)
         out["published_dt"] = pd.NaT
@@ -48,29 +53,29 @@ def filter_by_date(
     """Filter rows by ``published_dt`` inclusive day bounds."""
     if df.empty:
         return df.copy()
-    work = ensure_published_dt(df) if "published_dt" not in df.columns else df.copy()
+    work = ensure_published_dt(df)
     try:
         mask_missing = work["published_dt"].isna()
         mask_ok = ~mask_missing
         if date_from is not None:
-            start = pd.Timestamp(date_from).normalize()
+            start = parse_published(date_from).normalize()
             mask_ok &= work["published_dt"] >= start
         if date_to is not None:
-            end = pd.Timestamp(date_to).normalize() + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-            mask_ok &= work["published_dt"] <= end
+            end = parse_published(date_to).normalize() + pd.Timedelta(days=1)
+            mask_ok &= work["published_dt"] < end
         if include_missing:
             return work.loc[mask_ok | mask_missing].copy()
         return work.loc[mask_ok].copy()
     except Exception as exc:
         logger.warning("filter_by_date failed: %s", exc)
-        return work.copy()
+        return work.iloc[0:0].copy()
 
 
 def cap_corpus(df: pd.DataFrame, max_rows: int) -> pd.DataFrame:
     """Keep newest ``max_rows`` articles by ``published_dt``."""
     if max_rows <= 0 or df.empty:
         return df.iloc[0:0].copy()
-    work = ensure_published_dt(df) if "published_dt" not in df.columns else df.copy()
+    work = ensure_published_dt(df)
     try:
         return work.sort_values("published_dt", ascending=False, na_position="last").head(max_rows)
     except Exception as exc:
@@ -231,7 +236,10 @@ def suggest_lda_labels(df: pd.DataFrame, number_topics: int = 5) -> list[str]:
 
         content = df.get("content", pd.Series(dtype=str)).fillna("").astype(str)
         labels = run_topic_modeling(content, number_topics=number_topics, number_words=5)
-        return list(labels or [])
+        return [
+            re.sub(r"^\s*Тема\s+\d+\s*:\s*", "", str(label), flags=re.IGNORECASE)
+            for label in (labels or [])
+        ]
     except Exception as exc:
         logger.warning("suggest_lda_labels soft-failed: %s", exc)
         return []
@@ -243,6 +251,11 @@ def _to_bucket(series: pd.Series, freq: str) -> pd.Series:
         # Monday-start week
         return (ts - pd.to_timedelta(ts.dt.weekday, unit="D")).dt.normalize()
     return ts.dt.normalize()
+
+
+def _full_bucket_range(series: pd.Series, freq: str) -> pd.DatetimeIndex:
+    step = "7D" if str(freq).upper().startswith("W") else "D"
+    return pd.date_range(series.min(), series.max(), freq=step)
 
 
 def _term_hit_mask(
@@ -274,9 +287,10 @@ def aggregate_trends(
     try:
         work = work.copy()
         work["bucket"] = _to_bucket(work["published_dt"], freq)
+        buckets = _full_bucket_range(work["bucket"], freq)
         for term in terms:
             mask = _term_hit_mask(work, term, fields, whole_word)
-            counts = work.loc[mask].groupby("bucket").size()
+            counts = work.loc[mask].groupby("bucket").size().reindex(buckets, fill_value=0)
             for bucket, count in counts.items():
                 rows.append({"bucket": bucket, "term": term, "count": int(count)})
     except Exception as exc:
@@ -300,7 +314,19 @@ def aggregate_trends_by_source(
         work = work.copy()
         work["bucket"] = _to_bucket(work["published_dt"], freq)
         mask = _term_hit_mask(work, term, fields, whole_word)
-        counts = work.loc[mask].groupby(["bucket", "source"]).size().reset_index(name="count")
+        buckets = _full_bucket_range(work["bucket"], freq)
+        sources = pd.Index(work["source"].dropna().unique())
+        full_index = pd.MultiIndex.from_product(
+            [buckets, sources],
+            names=["bucket", "source"],
+        )
+        counts = (
+            work.loc[mask]
+            .groupby(["bucket", "source"])
+            .size()
+            .reindex(full_index, fill_value=0)
+            .reset_index(name="count")
+        )
         return counts.sort_values(["bucket", "source"]).reset_index(drop=True)
     except Exception as exc:
         logger.exception("aggregate_trends_by_source failed: %s", exc)

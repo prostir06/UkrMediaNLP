@@ -127,6 +127,80 @@ def test_render_corpus_search_requires_corpus(mock_st):
     mock_st.info.assert_called_once()
 
 
+def test_commit_corpus_load_preserves_previous_on_total_failure(mock_st):
+    from app import _commit_corpus_load
+
+    previous = pd.DataFrame({"title": ["previous"]})
+    mock_st.session_state = {"corpus_df": previous}
+
+    replaced = _commit_corpus_load(
+        pd.DataFrame(),
+        ["A: failed", "B: failed"],
+        sources=["A", "B"],
+        category="Новини",
+    )
+
+    assert replaced is False
+    assert mock_st.session_state["corpus_df"] is previous
+    mock_st.error.assert_called_once()
+
+
+def test_commit_corpus_load_stores_empty_when_no_previous_corpus(mock_st):
+    from app import _commit_corpus_load
+
+    mock_st.session_state = {}
+
+    replaced = _commit_corpus_load(
+        pd.DataFrame(),
+        ["A: failed"],
+        sources=["A"],
+        category="Новини",
+    )
+
+    assert replaced is True
+    assert mock_st.session_state["corpus_df"].empty
+    assert mock_st.session_state["corpus_sources"] == ["A"]
+
+
+def test_invalidate_stale_corpus_clears_source_mismatch(mock_st):
+    from app import _invalidate_stale_corpus
+
+    mock_st.session_state = {
+        "corpus_df": pd.DataFrame({"title": ["old"]}),
+        "corpus_category": "Новини",
+        "corpus_sources": ["A"],
+    }
+
+    invalidated = _invalidate_stale_corpus(
+        category="Новини",
+        current_sources=["B"],
+        all_category=False,
+    )
+
+    assert invalidated is True
+    assert mock_st.session_state["corpus_df"].empty
+    mock_st.warning.assert_called_once()
+
+
+def test_invalidate_stale_corpus_clears_category_mismatch(mock_st):
+    from app import _invalidate_stale_corpus
+
+    mock_st.session_state = {
+        "corpus_df": pd.DataFrame({"title": ["old"]}),
+        "corpus_category": "Новини",
+        "corpus_sources": ["A"],
+    }
+
+    invalidated = _invalidate_stale_corpus(
+        category="Спорт",
+        current_sources=["A"],
+        all_category=True,
+    )
+
+    assert invalidated is True
+    assert mock_st.session_state["corpus_df"].empty
+
+
 def test_load_data_dispatches_corpus_search_without_loading_source(mock_st, monkeypatch):
     from app import load_data
 

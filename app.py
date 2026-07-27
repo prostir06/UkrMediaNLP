@@ -141,6 +141,61 @@ def _load_source(source_name: str) -> pd.DataFrame:
                 logger.debug("Progress cleanup failed: %s", exc)
 
 
+def _commit_corpus_load(
+    corpus_df: pd.DataFrame,
+    warnings: list[str],
+    sources: list[str],
+    category: str,
+) -> bool:
+    """Store a corpus load unless every requested source failed."""
+    previous = st.session_state.get("corpus_df")
+    has_previous = isinstance(previous, pd.DataFrame) and not previous.empty
+    total_failure = bool(sources) and corpus_df.empty and len(warnings) >= len(sources)
+
+    for warning in warnings:
+        st.warning(f"Не вдалося завантажити джерело: {warning}")
+
+    if total_failure and has_previous:
+        st.error("Жодне джерело не завантажено. Попередній корпус збережено.")
+        return False
+
+    st.session_state["corpus_df"] = corpus_df
+    st.session_state["corpus_sources"] = list(sources)
+    st.session_state["corpus_category"] = category
+    st.session_state["corpus_loaded_at"] = pd.Timestamp.now()
+
+    if total_failure:
+        st.error("Жодне джерело не завантажено.")
+    elif corpus_df.empty:
+        st.warning("Корпус порожній: статті за заданими умовами не знайдено.")
+    else:
+        st.success(f"Корпус завантажено: {len(corpus_df)} статей.")
+    return True
+
+
+def _invalidate_stale_corpus(
+    category: str,
+    current_sources: list[str],
+    all_category: bool,
+) -> bool:
+    """Soft-clear a loaded corpus that no longer matches sidebar controls."""
+    corpus_df = st.session_state.get("corpus_df")
+    if not isinstance(corpus_df, pd.DataFrame) or corpus_df.empty:
+        return False
+
+    stored_category = st.session_state.get("corpus_category")
+    stored_sources = st.session_state.get("corpus_sources", [])
+    category_changed = stored_category != category
+    sources_changed = not all_category and sorted(stored_sources) != sorted(current_sources)
+    if not category_changed and not sources_changed:
+        return False
+
+    st.session_state["corpus_df"] = corpus_df.iloc[0:0].copy()
+    st.warning("Налаштування корпусу змінилися; попередній корпус більше не актуальний.")
+    st.info("Завантажте корпус повторно для поточної категорії та вибраних медіа.")
+    return True
+
+
 def render_intro(intro_text: str) -> None:
     st.markdown(intro_text)
 
@@ -916,6 +971,12 @@ def main() -> None:
             st.error(f"Не вдалося показати налаштування корпусу: {exc}")
             return
 
+        _invalidate_stale_corpus(
+            category=category,
+            current_sources=corpus_controls["sources"],
+            all_category=corpus_controls["all_category"],
+        )
+
         if corpus_controls["load_clicked"]:
             sources = corpus_controls["sources"]
             if not sources:
@@ -931,18 +992,7 @@ def main() -> None:
                             category=category,
                             load_articles_fn=load_articles,
                         )
-                    st.session_state["corpus_df"] = corpus_df
-                    st.session_state["corpus_sources"] = list(sources)
-                    st.session_state["corpus_category"] = category
-                    st.session_state["corpus_loaded_at"] = pd.Timestamp.now()
-                    # Date controls already persist under corpus_date_from/to
-                    # via their Streamlit widget keys.
-                    for warning in warnings:
-                        st.warning(f"Не вдалося завантажити джерело: {warning}")
-                    if corpus_df.empty:
-                        st.warning("Корпус порожній: статті за заданими умовами не знайдено.")
-                    else:
-                        st.success(f"Корпус завантажено: {len(corpus_df)} статей.")
+                    _commit_corpus_load(corpus_df, warnings, list(sources), category)
                 except Exception as exc:
                     logger.exception("Corpus load failed")
                     st.error(f"Не вдалося завантажити корпус: {exc}")

@@ -5,6 +5,9 @@ from nlp.corpus import cap_corpus, ensure_published_dt, filter_by_date, parse_pu
 
 def test_parse_published_iso_and_empty():
     assert parse_published("2024-01-15T12:00:00") == pd.Timestamp("2024-01-15 12:00:00")
+    assert parse_published("2024-01-15T12:00:00+00:00") == pd.Timestamp(
+        "2024-01-15 12:00:00"
+    )
     assert pd.isna(parse_published(""))
     assert pd.isna(parse_published(None))
 
@@ -35,6 +38,43 @@ def test_filter_by_date_and_cap():
     capped = cap_corpus(df, max_rows=1)
     assert len(capped) == 1
     assert capped.iloc[0]["title"] == "b"
+
+
+def test_filter_by_date_handles_mixed_timezone_values():
+    df = pd.DataFrame(
+        {
+            "title": ["before", "inside", "after"],
+            "published": [
+                "2024-01-14T23:59:59+00:00",
+                "2024-01-15T12:00:00+00:00",
+                "2024-01-16T00:00:00+00:00",
+            ],
+        }
+    )
+
+    filtered = filter_by_date(
+        df,
+        date_from=pd.Timestamp("2024-01-15"),
+        date_to=pd.Timestamp("2024-01-15"),
+    )
+
+    assert list(filtered["title"]) == ["inside"]
+
+
+def test_cap_corpus_handles_timezone_aware_values():
+    df = pd.DataFrame(
+        {
+            "title": ["old", "new"],
+            "published_dt": [
+                pd.Timestamp("2024-01-15T12:00:00+00:00"),
+                pd.Timestamp("2024-01-16T12:00:00+02:00"),
+            ],
+        }
+    )
+
+    capped = cap_corpus(df, max_rows=1)
+
+    assert list(capped["title"]) == ["new"]
 
 
 def test_search_corpus_phrase_and_whole_word():
@@ -86,6 +126,28 @@ def test_aggregate_trends_day_and_by_source():
     by_src = aggregate_trends_by_source(df, "футбол", freq="D")
     assert set(by_src.columns) >= {"bucket", "source", "count"}
     assert by_src["count"].sum() == 2
+
+
+def test_aggregate_trends_zero_fills_days_between_hits():
+    from nlp.corpus import aggregate_trends, aggregate_trends_by_source
+
+    df = pd.DataFrame(
+        {
+            "title": ["футбол", "інша тема", "футбол"],
+            "content": ["", "", ""],
+            "published": ["2024-03-01", "2024-03-02", "2024-03-03"],
+            "source": ["A", "B", "A"],
+        }
+    )
+
+    trends = aggregate_trends(df, ["футбол"], freq="D")
+    assert list(trends["count"]) == [1, 0, 1]
+    assert list(trends["bucket"]) == list(pd.date_range("2024-03-01", "2024-03-03"))
+
+    by_source = aggregate_trends_by_source(df, "футбол", freq="D")
+    middle = by_source[by_source["bucket"] == pd.Timestamp("2024-03-02")]
+    assert set(middle["source"]) == {"A", "B"}
+    assert middle["count"].eq(0).all()
 
 
 def test_aggregate_trends_weekly_w_mon():
