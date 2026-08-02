@@ -1,8 +1,10 @@
 """Tests for SSRF URL validation."""
 
-
-
-from url_utils import get_allowed_domains, is_allowed_url
+from url_utils import (
+    _registrable_domain,
+    get_allowed_domains,
+    is_allowed_url,
+)
 
 
 def test_allowed_domains_includes_configured_media():
@@ -11,6 +13,17 @@ def test_allowed_domains_includes_configured_media():
     assert "nv.ua" in domains
     assert "pravda.com.ua" in domains
     assert "unian.ua" in domains or "rss.unian.ua" in domains
+    # Public-suffix truncation must never allow the bare multi-part TLD.
+    assert "com.ua" not in domains
+    assert "org.ua" not in domains
+
+
+def test_registrable_domain_respects_multipart_ua_suffix():
+    assert _registrable_domain("pravda.com.ua") == "pravda.com.ua"
+    assert _registrable_domain("news.pravda.com.ua") == "pravda.com.ua"
+    assert _registrable_domain("rss.unian.ua") == "unian.ua"
+    assert _registrable_domain("com.ua") is None
+    assert _registrable_domain("assets.censor.net") == "censor.net"
 
 
 def test_allowed_domains_includes_category_media():
@@ -21,6 +34,16 @@ def test_allowed_domains_includes_category_media():
     assert "football.ua" in domains
     assert "ain.ua" in domains
     assert "champion.com.ua" in domains
+
+
+def test_blocks_evil_com_ua_despite_pravda(monkeypatch):
+    """Registrable-domain heuristic must not treat com.ua as trusted."""
+    monkeypatch.setattr(
+        "url_utils._resolve_host_is_public",
+        lambda hostname: True,
+    )
+    assert is_allowed_url("https://evil.com.ua/steal") is False
+    assert is_allowed_url("https://www.pravda.com.ua/news/1/") is True
 
 
 def test_blocks_file_scheme():

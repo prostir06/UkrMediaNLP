@@ -103,3 +103,72 @@ def test_read_limited_content_handles_stream_error(monkeypatch):
 
     result = scraping._read_limited_content(BrokenResponse(), max_bytes=1024)
     assert result == b""
+
+
+def test_execute_http_get_blocks_disallowed_redirect_hop(monkeypatch):
+    """Must not open a connection to a disallowed Location host."""
+    import requests
+
+    import scraping
+
+    requested: list[str] = []
+
+    def fake_get(url, **kwargs):
+        requested.append(url)
+        assert kwargs.get("allow_redirects") is False
+        if "evil" in url:
+            raise AssertionError(f"must not request blocked hop: {url}")
+
+        response = type("Resp", (), {})()
+        response.status_code = 302
+        response.headers = {"Location": "https://evil.example/steal"}
+        response.url = url
+        response.close = lambda: None
+        return response
+
+    monkeypatch.setattr(
+        "scraping.is_allowed_url",
+        lambda url: "nv.ua" in url and "evil" not in url,
+    )
+    monkeypatch.setattr("scraping.requests.get", fake_get)
+
+    with pytest.raises(requests.RequestException) as exc_info:
+        scraping._execute_http_get(
+            "https://nv.ua/ukr/rss/all.xml",
+            timeout=5,
+            headers={},
+        )
+
+    assert "blocked" in str(exc_info.value).lower()
+    assert requested == ["https://nv.ua/ukr/rss/all.xml"]
+
+
+def test_execute_http_get_follows_allowed_redirect(monkeypatch):
+    import scraping
+
+    requested: list[str] = []
+
+    def fake_get(url, **kwargs):
+        requested.append(url)
+        assert kwargs.get("allow_redirects") is False
+        response = type("Resp", (), {})()
+        response.headers = {}
+        response.url = url
+        response.close = lambda: None
+        if url.endswith("/start"):
+            response.status_code = 302
+            response.headers = {"Location": "https://nv.ua/final"}
+            return response
+        response.status_code = 200
+        return response
+
+    monkeypatch.setattr("scraping.is_allowed_url", lambda url: "nv.ua" in url)
+    monkeypatch.setattr("scraping.requests.get", fake_get)
+
+    final = scraping._execute_http_get(
+        "https://nv.ua/start",
+        timeout=5,
+        headers={},
+    )
+    assert final.status_code == 200
+    assert requested == ["https://nv.ua/start", "https://nv.ua/final"]

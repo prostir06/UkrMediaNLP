@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urljoin
 
 import requests
 
@@ -24,6 +25,8 @@ from url_utils import MAX_RESPONSE_BYTES, is_allowed_url
 logger = logging.getLogger(__name__)
 
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+HTTP_MAX_REDIRECTS = 10
 
 
 class ThreadSafeRateLimiter:
@@ -81,14 +84,14 @@ def _get_session() -> requests.Session:
     return _thread_local.session
 
 
-def _execute_http_get(url: str, timeout: int, headers: dict) -> requests.Response:
-    """Execute GET request using session pool or patched requests.get."""
+def _raw_http_get(url: str, timeout: int, headers: dict) -> requests.Response:
+    """Single GET without following redirects (session pool or patched get)."""
     if getattr(requests.get, "__module__", "") != "requests.api":
         return requests.get(
             url,
             timeout=timeout,
             headers=headers,
-            allow_redirects=True,
+            allow_redirects=False,
             stream=True,
         )
     session = _get_session()
@@ -96,8 +99,47 @@ def _execute_http_get(url: str, timeout: int, headers: dict) -> requests.Respons
         url,
         timeout=timeout,
         headers=headers,
-        allow_redirects=True,
+        allow_redirects=False,
         stream=True,
+    )
+
+
+def _execute_http_get(url: str, timeout: int, headers: dict) -> requests.Response:
+    """
+    Execute GET with hop-by-hop SSRF checks on redirect targets.
+
+    Never follows a ``Location`` until ``is_allowed_url`` accepts it, so a
+    redirect cannot open a TCP connection to a disallowed host.
+    """
+    current = url
+    for _ in range(HTTP_MAX_REDIRECTS + 1):
+        if not is_allowed_url(current):
+            raise requests.exceptions.RequestException(
+                f"Redirect blocked by SSRF guard: {current}"
+            )
+
+        response = _raw_http_get(current, timeout=timeout, headers=headers)
+        if response.status_code not in REDIRECT_STATUS_CODES:
+            return response
+
+        location = response.headers.get("Location")
+        if not location:
+            return response
+
+        next_url = urljoin(current, location)
+        try:
+            response.close()
+        except Exception as exc:
+            logger.debug("Failed to close redirect response: %s", exc)
+
+        if not is_allowed_url(next_url):
+            raise requests.exceptions.RequestException(
+                f"Redirect blocked by SSRF guard: {next_url}"
+            )
+        current = next_url
+
+    raise requests.exceptions.TooManyRedirects(
+        f"Exceeded {HTTP_MAX_REDIRECTS} redirects for {url}"
     )
 
 

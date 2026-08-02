@@ -6,7 +6,8 @@ Security model
 1. Only ``http`` and ``https`` schemes are permitted.
 2. Hostnames must match the allowlist derived from ``NEWS_SOURCES`` RSS URLs.
 3. DNS resolution must not return private, loopback, or link-local addresses.
-4. Redirect targets are re-validated after the HTTP response is received.
+4. Redirect ``Location`` targets are validated with ``is_allowed_url`` before
+   each hop (see ``scraping._execute_http_get``).
 """
 
 import ipaddress
@@ -21,6 +22,21 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_SCHEMES = frozenset({"http", "https"})
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# Multi-label public suffixes used by configured Ukrainian media hosts.
+# Never add these bare values to the allowlist (``pravda.com.ua`` ≠ ``com.ua``).
+MULTI_PART_PUBLIC_SUFFIXES = frozenset(
+    {
+        "com.ua",
+        "org.ua",
+        "net.ua",
+        "gov.ua",
+        "edu.ua",
+        "in.ua",
+        "co.ua",
+        "pp.ua",
+    }
+)
 
 
 def _hostname_from_url(url: str) -> str:
@@ -39,6 +55,30 @@ def _hostname_from_url(url: str) -> str:
     if hostname.startswith("www."):
         return hostname[4:]
     return hostname
+
+
+def _registrable_domain(hostname: str) -> str | None:
+    """
+    Best-effort eTLD+1 for allowlist expansion.
+
+    Special-cases known multi-part Ukrainian suffixes so hosts like
+    ``pravda.com.ua`` expand to themselves, never to bare ``com.ua``.
+    """
+    if not hostname or "." not in hostname:
+        return None
+
+    parts = hostname.split(".")
+    for suffix_len in (2,):
+        if len(parts) <= suffix_len:
+            continue
+        suffix = ".".join(parts[-suffix_len:])
+        if suffix in MULTI_PART_PUBLIC_SUFFIXES:
+            return ".".join(parts[-(suffix_len + 1) :])
+
+    parent = ".".join(parts[-2:])
+    if parent in MULTI_PART_PUBLIC_SUFFIXES:
+        return None
+    return parent
 
 
 @lru_cache(maxsize=1)
@@ -67,9 +107,9 @@ def get_allowed_domains() -> frozenset[str]:
             continue
         if hostname:
             domains.add(hostname)
-            parts = hostname.split(".")
-            if len(parts) >= 2:
-                domains.add(".".join(parts[-2:]))
+            registrable = _registrable_domain(hostname)
+            if registrable:
+                domains.add(registrable)
 
     # Article pages may live on subdomains not present in RSS URLs.
     extra = {
