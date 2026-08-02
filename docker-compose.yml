@@ -16,6 +16,30 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
+      - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
+    volumes:
+      - hf_cache:/app/.cache/huggingface
+      - article_cache:/app/.cache/articles
+
+  ukrmedia-nlp-full:
+    profiles: ["full-nlp"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PRELOAD_MODELS: "false"
+    container_name: ukrmedia-nlp-full
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    mem_limit: 4g
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - HF_HOME=/app/.cache/huggingface
+      - ARTICLE_CACHE_DIR=/app/.cache/articles
+      - SPACY_MODEL=uk_core_news_sm
+      - ALLOW_HEAVY_NLP=1
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -39,6 +63,7 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_md
+      - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles

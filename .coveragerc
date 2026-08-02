@@ -4,7 +4,6 @@ omit =
     scripts/*
     streamlit_app.py
     app.py
-    ui/*
 
 [report]
 exclude_lines =

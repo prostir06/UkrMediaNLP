@@ -51,8 +51,8 @@ COPY scripts/docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker_entrypoint.sh \
     && mkdir -p /app/.cache/huggingface /app/.cache/articles \
-    && chown -R appuser:appuser /app \
-    && python -m spacy download ${SPACY_MODEL} || true
+    && python -m spacy download ${SPACY_MODEL} \
+    && chown -R appuser:appuser /app
 
 USER appuser
 

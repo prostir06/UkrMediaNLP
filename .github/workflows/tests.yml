@@ -32,7 +32,7 @@ jobs:
       - name: Run unit tests with coverage
         env:
           ARTICLE_CACHE: "0"
-        run: pytest -m "not slow" --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=60
+        run: pytest -m "not slow" --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=65
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4

@@ -49,7 +49,7 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── requirements-cloud.txt  # Light Cloud (без torch)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
-├── tests/                  # pytest (~228 тестів)
+├── tests/                  # pytest (~270 тестів)
 ├── Dockerfile
 └── docker-compose.yml
 ```
@@ -72,7 +72,7 @@ python -m spacy download uk_core_news_sm
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-pytest -m "not slow" --cov=. --cov-fail-under=60
+pytest -m "not slow" --cov=. --cov-fail-under=65
 ```
 
 ## Запуск локально
@@ -104,6 +104,12 @@ spaCy medium (`uk_core_news_md`):
 docker compose --profile spacy-md up --build
 ```
 
+Повний NLP у Docker (`ALLOW_HEAVY_NLP=1`, `mem_limit: 4g`):
+
+```bash
+docker compose --profile full-nlp up --build
+```
+
 Nginx reverse proxy:
 
 ```bash
@@ -124,7 +130,7 @@ docker compose --profile with-nginx up --build
 
 GitHub Actions (`.github/workflows/tests.yml`):
 
-- pytest coverage gate **≥ 60%** (omit: `app.py`, `streamlit_app.py`, `ui/*`)
+- pytest coverage gate **≥ 65%** (omit: `app.py`, `streamlit_app.py`; `ui/*` включено)
 - ruff lint
 - cloud-deps job (`requirements-cloud.txt` + `LIGHT_CLOUD=1`)
 - docker compose build smoke
@@ -157,7 +163,13 @@ $env:ALLOW_HEAVY_NLP="1"
 streamlit run streamlit_app.py
 ```
 
-Або Docker: `docker compose up --build` (за потреби `PRELOAD_MODELS=true`).
+Або Docker:
+
+```bash
+docker compose --profile full-nlp up --build
+```
+
+(легкий режим без важких моделей: `docker compose up --build`; за потреби `PRELOAD_MODELS=true`).
 
 ### Секрети (опційно)
 

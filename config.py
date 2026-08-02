@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -528,8 +529,8 @@ ARTICLE_CACHE_ENABLED = os.environ.get("ARTICLE_CACHE", "1").lower() not in {
     "no",
 }
 
-# Used by scripts/scraper_health_check.py for optional per-source smoke URLs.
-SCRAPE_SAMPLE_URLS: dict[str, str] = {
+# Prefer human landing pages for health-check debug output; fall back to RSS origin.
+_SCRAPE_SAMPLE_OVERRIDES: dict[str, str] = {
     "NV": "https://nv.ua/ukr/",
     "Радіо Свобода": "https://www.radiosvoboda.org/a/",
     "Українська правда": "https://www.pravda.com.ua/news/",
@@ -538,4 +539,41 @@ SCRAPE_SAMPLE_URLS: dict[str, str] = {
     "Інтерфакс-Україна": "https://interfax.com.ua/news/",
     "TSN": "https://tsn.ua/",
     "УНІАН": "https://www.unian.ua/",
+    "Економічна правда": "https://epravda.com.ua/",
+    "Бізнес Цензор": "https://biz.censor.net/",
+    "NV (Економіка)": "https://nv.ua/ukr/economy.html",
+    "Радіо Свобода (Економіка)": "https://www.radiosvoboda.org/",
+    "Liga.net (Економіка)": "https://news.liga.net/economics/",
+    "NV (Спорт)": "https://nv.ua/ukr/sport.html",
+    "Радіо Свобода (Спорт)": "https://www.radiosvoboda.org/",
+    "Liga.net (Спорт)": "https://news.liga.net/sport/",
+    "Champion": "https://champion.com.ua/",
+    "Football.ua": "https://football.ua/",
+    "Суспільне Спорт": "https://suspilne.media/sport/",
+    "Tribuna": "https://ua.tribuna.com/",
+    "NV (Технології)": "https://nv.ua/ukr/techno.html",
+    "Liga.net (Технології)": "https://tech.liga.net/",
+    "ITC.ua": "https://itc.ua/",
+    "DOU": "https://dou.ua/",
+    "Mezha": "https://mezha.ua/",
+    "dev.ua": "https://dev.ua/",
+    "Speka": "https://speka.ua/",
+    "Vector": "https://vctr.media/",
+    "AIN.UA": "https://ain.ua/",
+}
+
+
+def _sample_url_from_rss(rss_url: str) -> str:
+    parsed = urlparse(str(rss_url))
+    if not parsed.scheme or not parsed.netloc:
+        return str(rss_url)
+    return f"{parsed.scheme}://{parsed.netloc}/"
+
+
+SCRAPE_SAMPLE_URLS: dict[str, str] = {
+    name: _SCRAPE_SAMPLE_OVERRIDES.get(
+        name,
+        _sample_url_from_rss(str(config.get("rss_url", ""))),
+    )
+    for name, config in NEWS_SOURCES.items()
 }
