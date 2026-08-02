@@ -7,6 +7,18 @@ import pytest
 
 from exceptions import DataLoaderError
 
+ST_TARGETS = (
+    "app.st",
+    "ui.widgets.st",
+    "ui.session_corpus.st",
+    "ui.features.intro.st",
+    "ui.features.snapshot.st",
+    "ui.features.sentiment_ui.st",
+    "ui.features.compare.st",
+    "ui.features.corpus_search.st",
+    "ui.features.corpus_trends.st",
+)
+
 
 @pytest.fixture
 def mock_st(monkeypatch):
@@ -14,7 +26,8 @@ def mock_st(monkeypatch):
     progress = MagicMock()
     st.progress.return_value = progress
     st.slider.return_value = 5
-    monkeypatch.setattr("app.st", st)
+    for target in ST_TARGETS:
+        monkeypatch.setattr(target, st)
     return st
 
 
@@ -48,7 +61,7 @@ def test_load_source_passes_progress_and_clears(mock_st, monkeypatch):
             progress_callback(2, 2)
         return pd.DataFrame({"title": ["a"]})
 
-    monkeypatch.setattr("app.load_articles", fake_load)
+    monkeypatch.setattr("ui.session_corpus.load_articles", fake_load)
     df = _load_source("NV")
     assert captured["source"] == "NV"
     assert len(df) == 1
@@ -59,7 +72,7 @@ def test_load_source_wraps_unexpected_errors(mock_st, monkeypatch):
     from app import _load_source
 
     monkeypatch.setattr(
-        "app.load_articles",
+        "ui.session_corpus.load_articles",
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     with pytest.raises(DataLoaderError):
@@ -68,7 +81,7 @@ def test_load_source_wraps_unexpected_errors(mock_st, monkeypatch):
 
 
 def test_render_sentiment_table(mock_st):
-    from app import _render_sentiment_table
+    from ui.features.sentiment_ui import _render_sentiment_table
 
     titles = pd.Series(["A", "B"])
     _render_sentiment_table(titles, ["Позитивна", "Негативна"])
@@ -77,7 +90,7 @@ def test_render_sentiment_table(mock_st):
 
 
 def test_render_sentiment_table_empty(mock_st):
-    from app import _render_sentiment_table
+    from ui.features.sentiment_ui import _render_sentiment_table
 
     _render_sentiment_table(pd.Series([], dtype=str), [])
     mock_st.warning.assert_called()
@@ -241,20 +254,21 @@ def test_render_topic_trends_wires_hybrid_terms_and_charts(mock_st, monkeypatch)
     mock_st.radio.return_value = "Тиждень"
     mock_st.selectbox.return_value = "футбол"
 
-    monkeypatch.setattr("app.get_cloud_light", lambda: False)
-    monkeypatch.setattr("app.suggest_terms", lambda df, n: ["футбол", "матч"])
-    monkeypatch.setattr("app.suggest_lda_labels", lambda df: ["спорт"])
+    mod = "ui.features.corpus_trends"
+    monkeypatch.setattr(f"{mod}.get_cloud_light", lambda: False)
+    monkeypatch.setattr(f"{mod}.suggest_terms", lambda df, n: ["футбол", "матч"])
+    monkeypatch.setattr(f"{mod}.suggest_lda_labels", lambda df: ["спорт"])
     trends = pd.DataFrame({"bucket": [pd.Timestamp("2024-03-04")], "term": ["футбол"], "count": [2]})
     source_trends = pd.DataFrame(
         {"bucket": [pd.Timestamp("2024-03-04")], "source": ["A"], "count": [1]}
     )
     aggregate = MagicMock(return_value=trends)
     aggregate_by_source = MagicMock(return_value=source_trends)
-    monkeypatch.setattr("app.aggregate_trends", aggregate)
-    monkeypatch.setattr("app.aggregate_trends_by_source", aggregate_by_source)
-    monkeypatch.setattr("app.build_trends_line", MagicMock(return_value="trend-figure"))
+    monkeypatch.setattr(f"{mod}.aggregate_trends", aggregate)
+    monkeypatch.setattr(f"{mod}.aggregate_trends_by_source", aggregate_by_source)
+    monkeypatch.setattr(f"{mod}.build_trends_line", MagicMock(return_value="trend-figure"))
     monkeypatch.setattr(
-        "app.build_source_trends_line",
+        f"{mod}.build_source_trends_line",
         MagicMock(return_value="source-figure"),
     )
 
@@ -299,10 +313,13 @@ def test_render_compare_media(mock_st, monkeypatch):
             "link": ["https://a", "https://b"],
         }
     )
-    monkeypatch.setattr("app._load_source", lambda name: df)
-    monkeypatch.setattr("app.preprocess", lambda s: s.fillna("").astype(str))
+    monkeypatch.setattr("ui.features.compare.load_source", lambda name: df)
     monkeypatch.setattr(
-        "app.get_top_n_words",
+        "ui.features.compare.preprocess",
+        lambda s: s.fillna("").astype(str),
+    )
+    monkeypatch.setattr(
+        "ui.features.compare.get_top_n_words",
         lambda titles, n: [("команда", 2), ("місто", 1)],
     )
 

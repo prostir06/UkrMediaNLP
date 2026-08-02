@@ -1,4 +1,4 @@
-"""Tests for Streamlit render helpers in app.py with mocked st."""
+"""Tests for Streamlit render helpers with mocked st."""
 
 from unittest.mock import MagicMock
 
@@ -7,6 +7,12 @@ import pytest
 
 from app import render_intro, render_snapshot
 from config import MAX_ARTICLES
+
+ST_TARGETS = (
+    "app.st",
+    "ui.features.intro.st",
+    "ui.features.snapshot.st",
+)
 
 
 @pytest.fixture
@@ -18,7 +24,8 @@ def mock_st(monkeypatch):
     st.expander.return_value = expander
     cols = [MagicMock(), MagicMock(), MagicMock()]
     st.columns.return_value = cols
-    monkeypatch.setattr("app.st", st)
+    for target in ST_TARGETS:
+        monkeypatch.setattr(target, st)
     return st
 
 

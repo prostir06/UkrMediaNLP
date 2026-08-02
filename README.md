@@ -25,12 +25,19 @@ Streamlit-додаток для збору новин з RSS українськ�
 ```
 ├── streamlit_app.py        # Entry point для Streamlit Cloud
 ├── runtime_env.py          # HF/torch defaults (ALLOW_HEAVY_NLP=0)
-├── app.py                  # Streamlit UI
-├── ui/                     # renderers.py, charts.py
+├── app.py                  # Thin Streamlit router (sidebar + dispatch)
+├── ui/
+│   ├── features/           # render_* screens (snapshot, ngrams, sentiment, corpus…)
+│   ├── session_corpus.py   # load_source / corpus session helpers
+│   ├── widgets.py          # shared Streamlit widgets
+│   ├── corpus_controls.py  # corpus sidebar + multi-source load
+│   ├── corpus_charts.py    # corpus Plotly charts
+│   ├── charts.py / renderers.py
 ├── cache.py                # Thin wrappers (моделі + load_articles → SQLite)
 ├── article_cache.py        # SQLite TTL-кеш статей
 ├── config.py               # Джерела новин і константи
 ├── data_loader.py          # fetch_articles (RSS + scrape)
+├── observability.py        # structured step= / elapsed_ms logs
 ├── url_utils.py            # SSRF URL validation
 ├── rss.py                  # RSS-парсер (shared HTTP stack)
 ├── scraping.py             # HTTP-скрейпінг
