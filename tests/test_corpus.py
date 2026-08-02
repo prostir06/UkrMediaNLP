@@ -177,8 +177,10 @@ def test_aggregate_trends_day_and_by_source():
     assert trends["count"].sum() == 2
     assert set(trends.columns) >= {"bucket", "term", "count"}
     by_src = aggregate_trends_by_source(df, "футбол", freq="D")
-    assert set(by_src.columns) >= {"bucket", "source", "count"}
+    assert set(by_src.columns) >= {"bucket", "source", "count", "articles", "rate"}
     assert by_src["count"].sum() == 2
+    hit = by_src[by_src["count"] > 0].iloc[0]
+    assert hit["rate"] == hit["count"] / max(hit["articles"], 1)
 
 
 def test_aggregate_trends_zero_fills_days_between_hits():

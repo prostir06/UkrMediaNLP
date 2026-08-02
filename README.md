@@ -19,6 +19,7 @@ Streamlit-додаток для збору новин з RSS українськ�
   - порівняння медіа в межах категорії
 - **Пошук у корпусі** — ключові слова/фрази по кількох медіа категорії
 - **Тренди тем** — гібридні теми (авто + ручні) і порівняння медіа на графіку
+- **Durable corpus (опційно)** — Postgres upsert / 90 днів retention / ingest CLI (`DATABASE_URL`)
 
 ## Структура проєкту
 
@@ -30,9 +31,11 @@ Streamlit-додаток для збору новин з RSS українськ�
 │   ├── features/           # render_* screens (snapshot, ngrams, sentiment, corpus…)
 │   ├── session_corpus.py   # load_source / corpus session helpers
 │   ├── widgets.py          # shared Streamlit widgets
-│   ├── corpus_controls.py  # corpus sidebar + multi-source load
+│   ├── corpus_controls.py  # corpus sidebar + multi-source load (+ optional store)
 │   ├── corpus_charts.py    # corpus Plotly charts
 │   ├── charts.py / renderers.py
+├── corpus_store/           # Durable Postgres corpus (SQLAlchemy + ingest CLI)
+├── alembic/                # DB migrations (articles)
 ├── cache.py                # Thin wrappers (моделі + load_articles → SQLite)
 ├── article_cache.py        # SQLite TTL-кеш статей
 ├── config.py               # NLP caps / function lists (re-exports media_sources)
@@ -46,13 +49,13 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── nlp/                    # NLP-модулі (без Streamlit)
 ├── nlp_analysis.py         # Фасад для UI
 ├── data/stopwords_uk.txt   # Українські стоп-слова
-├── requirements.txt        # Повний NLP (CPU torch)
-├── requirements-cloud.txt  # Light Cloud (без torch)
+├── requirements.txt        # Повний NLP (CPU torch) + Postgres driver
+├── requirements-cloud.txt  # Light Cloud (без torch; sqlalchemy optional)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
-├── tests/                  # pytest (~270 тестів)
+├── tests/                  # pytest (~280 тестів)
 ├── Dockerfile
-└── docker-compose.yml
+└── docker-compose.yml      # app + Postgres 16 (+ profiles)
 ```
 
 ## Встановлення (локально)
@@ -90,7 +93,22 @@ streamlit run streamlit_app.py
 docker compose up --build
 ```
 
-Додаток: http://localhost:8501
+Додаток: http://localhost:8501. Compose піднімає **Postgres 16** і передає `DATABASE_URL` у застосунок (durable corpus). Без `DATABASE_URL` локально — лише session-корпус як раніше.
+
+Міграції схеми:
+
+```bash
+# приклад для host → контейнер Postgres на :5432
+set DATABASE_URL=postgresql+psycopg://ukrmedia:ukrmedia@localhost:5432/ukrmedia
+alembic upgrade head
+```
+
+Пакетний ingest (після міграцій):
+
+```bash
+python -m corpus_store.ingest --all --dry-run
+docker compose --profile ingest run --rm ingest
+```
 
 Preload моделей:
 
@@ -204,6 +222,7 @@ LIGHT_CLOUD = "1"
 | `ARTICLE_CACHE_TTL` | 12h | TTL SQLite-кешу статей |
 | `SPACY_MODEL` | `uk_core_news_sm` | spaCy pipeline |
 | `ALLOW_HEAVY_NLP` | `0` | `1` = показати RoBERTa / емоції |
+| `DATABASE_URL` | _(немає)_ | Postgres URL для durable corpus; без нього — лише session |
 
 ## Обмеження
 

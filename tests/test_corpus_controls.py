@@ -129,6 +129,8 @@ def test_load_corpus_into_session_uses_config_caps(monkeypatch):
         return pd.DataFrame({"source": ["NV"]}), []
 
     monkeypatch.setattr(corpus_controls, "build_corpus_from_sources", fake_build)
+    monkeypatch.setattr(corpus_controls, "_try_load_from_store", lambda **_kwargs: None)
+    monkeypatch.setattr(corpus_controls, "_try_upsert_to_store", lambda _df: (None, None))
     monkeypatch.setattr(corpus_controls, "MAX_CORPUS_SOURCES", 3)
     monkeypatch.setattr(corpus_controls, "MAX_CORPUS_ARTICLES_TOTAL", 40)
 
@@ -145,6 +147,115 @@ def test_load_corpus_into_session_uses_config_caps(monkeypatch):
     assert warnings == []
     assert captured["max_sources"] == 3
     assert captured["max_rows"] == 40
+    assert df.attrs.get("corpus_origin") == "live"
+
+
+def test_load_corpus_prefers_store_when_nonempty(monkeypatch):
+    stored = pd.DataFrame({"source": ["NV"], "title": ["from-store"]})
+    stored.attrs["corpus_origin"] = "postgres"
+    monkeypatch.setattr(corpus_controls, "_try_load_from_store", lambda **_kwargs: stored)
+
+    def boom(**_kwargs):
+        raise AssertionError("live load should be skipped")
+
+    monkeypatch.setattr(corpus_controls, "build_corpus_from_sources", boom)
+
+    df, warnings = load_corpus_into_session(
+        ["NV"],
+        None,
+        None,
+        True,
+        "Новини",
+        load_articles_fn=lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    assert warnings == []
+    assert df.iloc[0]["title"] == "from-store"
+    assert df.attrs["corpus_origin"] == "postgres"
+
+
+def test_load_corpus_upserts_after_live(monkeypatch):
+    live = pd.DataFrame({"source": ["NV"], "title": ["live"]})
+    monkeypatch.setattr(corpus_controls, "_try_load_from_store", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        corpus_controls,
+        "build_corpus_from_sources",
+        lambda **_kwargs: (live, []),
+    )
+    monkeypatch.setattr(corpus_controls, "_try_upsert_to_store", lambda _df: (2, None))
+
+    df, _warnings = load_corpus_into_session(
+        ["NV"],
+        None,
+        None,
+        True,
+        "Новини",
+        load_articles_fn=lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    assert df.attrs["store_upserted"] == 2
+    assert df.attrs["corpus_origin"] == "live"
+
+
+def test_try_load_from_store_soft_fails(monkeypatch):
+    monkeypatch.setattr(corpus_controls, "is_store_configured", lambda: True)
+
+    def boom_scope():
+        raise RuntimeError("db offline")
+
+    monkeypatch.setattr(corpus_controls, "session_scope", boom_scope)
+    assert (
+        corpus_controls._try_load_from_store(
+            ["NV"], None, None, True, "Новини", max_rows=10
+        )
+        is None
+    )
+
+
+def test_try_load_from_store_postprocess_soft_fails(monkeypatch):
+    monkeypatch.setattr(corpus_controls, "is_store_configured", lambda: True)
+
+    class _Scope:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(corpus_controls, "session_scope", lambda: _Scope())
+    monkeypatch.setattr(
+        corpus_controls,
+        "load_corpus_from_store",
+        lambda *_a, **_k: pd.DataFrame({"source": ["NV"], "title": ["t"]}),
+    )
+    monkeypatch.setattr(
+        corpus_controls,
+        "merge_source_frames",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("merge")),
+    )
+    assert (
+        corpus_controls._try_load_from_store(
+            ["NV"], None, None, True, "Новини", max_rows=10
+        )
+        is None
+    )
+
+
+def test_try_upsert_to_store_returns_error_message(monkeypatch):
+    monkeypatch.setattr(corpus_controls, "is_store_configured", lambda: True)
+
+    def boom_scope():
+        raise RuntimeError("write failed")
+
+    monkeypatch.setattr(corpus_controls, "session_scope", boom_scope)
+    count, err = corpus_controls._try_upsert_to_store(
+        pd.DataFrame({"source": ["NV"], "title": ["t"]})
+    )
+    assert count is None
+    assert "write failed" in str(err)
+
+
+def test_try_upsert_skips_when_offline(monkeypatch):
+    monkeypatch.setattr(corpus_controls, "is_store_configured", lambda: False)
+    assert corpus_controls._try_upsert_to_store(pd.DataFrame({"a": [1]})) == (None, None)
 
 
 def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):

@@ -418,7 +418,7 @@ def aggregate_trends_by_source(
     work = ensure_published_dt(df)
     work = work.dropna(subset=["published_dt"])
     if work.empty or not str(term).strip():
-        return pd.DataFrame(columns=["bucket", "source", "count"])
+        return pd.DataFrame(columns=["bucket", "source", "count", "articles", "rate"])
     try:
         work = work.copy()
         work = ensure_search_blobs(work)
@@ -437,6 +437,15 @@ def aggregate_trends_by_source(
             .reindex(full_index, fill_value=0)
             .reset_index(name="count")
         )
+        articles = (
+            work.groupby(["bucket", "source"])
+            .size()
+            .reindex(full_index, fill_value=0)
+            .reset_index(name="articles")
+        )
+        counts = counts.merge(articles, on=["bucket", "source"], how="left")
+        counts["articles"] = counts["articles"].fillna(0).astype(int)
+        counts["rate"] = counts["count"] / counts["articles"].clip(lower=1)
         return counts.sort_values(["bucket", "source"]).reset_index(drop=True)
     except Exception as exc:
         logger.exception("aggregate_trends_by_source failed: %s", exc)

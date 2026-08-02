@@ -44,14 +44,16 @@ def build_source_trends_line(trends: pd.DataFrame):
     try:
         if trends is None or trends.empty:
             return None
+        y_col = "rate" if "rate" in trends.columns else "count"
+        y_label = "Частка (hits / articles)" if y_col == "rate" else "Статей"
         return px.line(
             trends,
             x="bucket",
-            y="count",
+            y=y_col,
             color="source",
             markers=True,
             title="Порівняння медіа (одна тема)",
-            labels={"bucket": "Дата", "count": "Статей", "source": "Медіа"},
+            labels={"bucket": "Дата", y_col: y_label, "source": "Медіа"},
         )
     except Exception as exc:
         logger.warning("build_source_trends_line failed: %s", exc)

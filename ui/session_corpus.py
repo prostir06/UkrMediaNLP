@@ -81,6 +81,19 @@ def commit_corpus_load(
     else:
         st.success(f"Корпус завантажено: {len(corpus_df)} статей.")
 
+    origin = corpus_df.attrs.get("corpus_origin", "live")
+    if origin == "postgres" and not corpus_df.empty:
+        st.caption(f"Джерело: Postgres ({len(corpus_df)} статей)")
+    elif not corpus_df.empty:
+        st.caption(f"Джерело: Live RSS ({len(corpus_df)} статей)")
+        upsert_error = corpus_df.attrs.get("store_upsert_error")
+        if upsert_error:
+            st.warning(f"Не вдалося зберегти корпус у Postgres: {upsert_error}")
+        elif corpus_df.attrs.get("store_upserted") is not None:
+            st.caption(
+                f"Збережено в store: {int(corpus_df.attrs['store_upserted'])} записів"
+            )
+
     stats_list = corpus_df.attrs.get("scrape_stats_by_source") or []
     if isinstance(stats_list, list) and stats_list:
         parts = []

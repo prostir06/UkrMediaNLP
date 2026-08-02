@@ -4,6 +4,8 @@ omit =
     scripts/*
     streamlit_app.py
     app.py
+    alembic/*
+    alembic.ini
 
 [report]
 exclude_lines =

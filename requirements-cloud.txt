@@ -10,3 +10,5 @@ scikit-learn>=1.4,<2
 wordcloud>=1.9,<2
 spacy>=3.8,<3.9
 uk-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/uk_core_news_sm-3.8.0/uk_core_news_sm-3.8.0-py3-none-any.whl
+# Optional durable corpus (no-op without DATABASE_URL; no Postgres driver on Cloud)
+sqlalchemy>=2.0,<3

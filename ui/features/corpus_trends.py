@@ -85,10 +85,16 @@ def render_topic_trends() -> None:
         selected_terms,
         key="topic_trends_source_term",
     )
-    source_figure = build_source_trends_line(
-        aggregate_trends_by_source(corpus_df, comparison_term, freq=frequency)
-    )
+    by_source = aggregate_trends_by_source(corpus_df, comparison_term, freq=frequency)
+    source_figure = build_source_trends_line(by_source)
     if source_figure is None:
         st.warning("Немає даних для порівняння медіа за цією темою.")
     else:
+        st.caption("Графік: rate = hits / max(articles у бакеті для медіа, 1)")
         st.plotly_chart(source_figure, use_container_width=True)
+        table_cols = [
+            column
+            for column in ("bucket", "source", "count", "articles", "rate")
+            if column in by_source.columns
+        ]
+        st.dataframe(by_source[table_cols], use_container_width=True, hide_index=True)

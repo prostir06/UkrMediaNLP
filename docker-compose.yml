@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ukrmedia-nlp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ukrmedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ukrmedia}
+      POSTGRES_DB: ${POSTGRES_DB:-ukrmedia}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ukrmedia} -d ${POSTGRES_DB:-ukrmedia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   ukrmedia-nlp:
     build:
       context: .
@@ -17,9 +35,13 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   ukrmedia-nlp-full:
     profiles: ["full-nlp"]
@@ -40,9 +62,13 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=1
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   ukrmedia-nlp-md:
     profiles: ["spacy-md"]
@@ -64,9 +90,34 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_md
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ingest:
+    profiles: ["ingest"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PRELOAD_MODELS: "false"
+    container_name: ukrmedia-nlp-ingest
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
+      - HF_HOME=/app/.cache/huggingface
+      - ARTICLE_CACHE_DIR=/app/.cache/articles
+      - SPACY_MODEL=uk_core_news_sm
+    volumes:
+      - hf_cache:/app/.cache/huggingface
+      - article_cache:/app/.cache/articles
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "corpus_store.ingest", "--all"]
 
   nginx:
     profiles: ["with-nginx"]
@@ -82,3 +133,4 @@ services:
 volumes:
   hf_cache:
   article_cache:
+  postgres_data:

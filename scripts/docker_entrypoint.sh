@@ -20,4 +20,10 @@ print("Preload done.")
 PY
 fi
 
+# Apply durable-corpus migrations when Postgres is configured (best-effort).
+if [ -n "${DATABASE_URL:-}" ]; then
+  echo "Running alembic upgrade head..."
+  python -m alembic upgrade head || echo "alembic migrate skipped (store may be unavailable)"
+fi
+
 exec "$@"

@@ -20,7 +20,10 @@ htmlcov/
 # Streamlit (never commit secrets)
 .streamlit/secrets.toml
 
-# Caches and model downloads
+# Local databases / caches
+*.db
+*.sqlite
+*.sqlite3
 .cache/
 .huggingface/
 **/.cache/huggingface/
@@ -49,5 +52,6 @@ _tmp_*.py
 *.bak
 *.tmp
 
+# Agent / worktree scratch (never commit)
 .worktrees/
 .superpowers/

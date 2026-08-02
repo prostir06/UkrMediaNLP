@@ -19,7 +19,102 @@ from observability import log_step
 
 logger = logging.getLogger(__name__)
 
+# Optional durable store (requires sqlalchemy; absent on minimal installs).
+try:
+    from corpus_store import (
+        is_store_configured,
+        load_corpus_from_store,
+        session_scope,
+        upsert_articles,
+    )
+except ImportError:  # pragma: no cover - exercised when deps are stripped
+    logger.warning("corpus_store package unavailable; session-only corpus mode")
+
+    def is_store_configured() -> bool:
+        return False
+
+    def load_corpus_from_store(*_args, **_kwargs):
+        return None
+
+    def session_scope(*_args, **_kwargs):
+        raise RuntimeError("corpus_store unavailable")
+
+    def upsert_articles(*_args, **_kwargs) -> int:
+        return 0
+
 CORPUS_FUNCTIONS = frozenset({"Пошук у корпусі", "Тренди тем"})
+
+
+def _try_load_from_store(
+    sources: list[str],
+    date_from,
+    date_to,
+    include_missing: bool,
+    category: str,
+    max_rows: int,
+) -> pd.DataFrame | None:
+    """
+    Prefer Postgres when ``DATABASE_URL`` is set and the query returns rows.
+
+    Soft-fails (returns ``None``) on any store / blob error so the caller can
+    fall back to live RSS without crashing the Streamlit page.
+    """
+    try:
+        if not is_store_configured():
+            return None
+    except Exception as exc:
+        logger.warning("corpus store config check failed: %s", exc)
+        return None
+
+    try:
+        with session_scope() as session:
+            stored = load_corpus_from_store(
+                session,
+                sources=list(sources),
+                date_from=date_from,
+                date_to=date_to,
+                categories=[category] if category else None,
+                include_missing_dates=include_missing,
+            )
+    except Exception as exc:
+        logger.warning("corpus store read failed: %s", exc)
+        return None
+
+    if stored is None or getattr(stored, "empty", True):
+        return None
+
+    try:
+        capped = ensure_search_blobs(
+            merge_source_frames([stored], max_rows=max_rows)
+        )
+        capped.attrs["corpus_origin"] = "postgres"
+        return capped
+    except Exception as exc:
+        logger.warning("corpus store post-process failed: %s", exc)
+        return None
+
+
+def _try_upsert_to_store(df: pd.DataFrame) -> tuple[int | None, str | None]:
+    """
+    Upsert live corpus rows into Postgres when configured.
+
+    Returns:
+        ``(count, None)`` on success, ``(None, error_message)`` on failure,
+        ``(None, None)`` when the store is offline or *df* is empty.
+    """
+    try:
+        if not is_store_configured() or df is None or getattr(df, "empty", True):
+            return None, None
+    except Exception as exc:
+        return None, str(exc)
+
+    try:
+        with session_scope() as session:
+            count = upsert_articles(session, df)
+        return count, None
+    except Exception as exc:
+        logger.warning("corpus store upsert failed: %s", exc)
+        return None, str(exc)
 
 
 def build_corpus_from_sources(
@@ -104,7 +199,19 @@ def load_corpus_into_session(
     load_articles_fn,
     progress_callback=None,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Build a corpus with configured limits for storage by the caller."""
+    """Prefer Postgres store when configured; else live RSS, then upsert."""
+    stored = _try_load_from_store(
+        sources=sources,
+        date_from=date_from,
+        date_to=date_to,
+        include_missing=include_missing,
+        category=category,
+        max_rows=MAX_CORPUS_ARTICLES_TOTAL,
+    )
+    if stored is not None:
+        stored.attrs["category"] = category
+        return stored, []
+
     df, warnings = build_corpus_from_sources(
         sources=sources,
         load_articles_fn=load_articles_fn,
@@ -116,6 +223,12 @@ def load_corpus_into_session(
         progress_callback=progress_callback,
     )
     df.attrs["category"] = category
+    df.attrs["corpus_origin"] = "live"
+    upserted, upsert_error = _try_upsert_to_store(df)
+    if upserted is not None:
+        df.attrs["store_upserted"] = upserted
+    if upsert_error:
+        df.attrs["store_upsert_error"] = upsert_error
     return df, warnings
 
 

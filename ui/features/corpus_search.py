@@ -86,3 +86,15 @@ def render_corpus_search() -> None:
         use_container_width=True,
         hide_index=True,
     )
+    try:
+        csv_bytes = results[visible_columns].to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "Завантажити CSV",
+            data=csv_bytes,
+            file_name="corpus_search_hits.csv",
+            mime="text/csv",
+            key="corpus_search_csv",
+        )
+    except Exception as exc:
+        logger.warning("Corpus search CSV export failed: %s", exc)
+        st.caption("CSV-експорт тимчасово недоступний.")

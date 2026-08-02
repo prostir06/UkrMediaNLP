@@ -30,7 +30,7 @@ def test_scrape_sample_urls_cover_all_sources():
 
 
 def test_news_source_config_typeddict_keys():
-    from media_sources import NewsSourceConfig, REQUIRED_SOURCE_KEYS
+    from media_sources import REQUIRED_SOURCE_KEYS, NewsSourceConfig
 
     assert set(NewsSourceConfig.__annotations__) == set(REQUIRED_SOURCE_KEYS)
 
