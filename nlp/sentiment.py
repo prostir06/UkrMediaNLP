@@ -510,7 +510,10 @@ def classify_sentiment_batch(texts: list[str]) -> list[str]:
         raise
     except Exception as exc:
         logger.warning("Batch sentiment failed: %s", exc)
-        return ["Нейтральна"] * len(texts)
+        raise NLPAnalysisError(
+            f"Пакетний аналіз тональності не вдався: {exc}",
+            step="classify_sentiment_batch",
+        ) from exc
 
 
 def _probs_to_emotions(probs: list[float], id2label: dict) -> tuple[list[str], str]:

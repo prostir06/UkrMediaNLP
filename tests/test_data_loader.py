@@ -38,6 +38,12 @@ def test_fetch_articles_enriches_from_rss_fixture(sample_rss_url, monkeypatch):
     assert len(df) == 2
     assert bool(df.iloc[0]["scraped_ok"]) is True
     assert "Scraped body" in df.iloc[0]["content"]
+    stats = df.attrs.get("scrape_stats")
+    assert isinstance(stats, dict)
+    assert stats["source"] == "Тест"
+    assert stats["ok"] == 2
+    assert stats["total"] == 2
+    assert "elapsed_ms" in stats
 
 
 def test_fetch_articles_uses_description_when_scrape_empty(sample_rss_url, monkeypatch):

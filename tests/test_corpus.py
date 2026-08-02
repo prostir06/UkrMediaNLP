@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from nlp.corpus import cap_corpus, ensure_published_dt, filter_by_date, parse_published
 
@@ -105,6 +106,58 @@ def test_search_empty_query_returns_empty():
 
     df = pd.DataFrame({"title": ["a"], "content": ["b"], "description": [""], "published": ["2024-01-01"], "source": ["A"], "link": ["u"]})
     assert search_corpus(df, "   ").empty
+
+
+def test_search_corpus_unexpected_error_raises(monkeypatch):
+    from exceptions import NLPAnalysisError
+    from nlp import corpus as corpus_mod
+
+    df = pd.DataFrame(
+        {
+            "title": ["x"],
+            "content": ["y"],
+            "description": [""],
+            "published": ["2024-01-01"],
+            "source": ["A"],
+            "link": ["u"],
+        }
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("search blew up")
+
+    monkeypatch.setattr(corpus_mod, "row_matches", boom)
+
+    with pytest.raises(NLPAnalysisError) as exc_info:
+        corpus_mod.search_corpus(df, "x")
+    assert exc_info.value.step == "search_corpus"
+
+
+def test_aggregate_trends_unexpected_error_raises(monkeypatch):
+    from exceptions import NLPAnalysisError
+    from nlp import corpus as corpus_mod
+
+    df = pd.DataFrame(
+        {
+            "title": ["футбол"],
+            "content": [""],
+            "published": ["2024-03-01"],
+            "source": ["A"],
+        }
+    )
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("trend blew up")
+
+    monkeypatch.setattr(corpus_mod, "_term_hit_mask", boom)
+
+    with pytest.raises(NLPAnalysisError) as exc_info:
+        corpus_mod.aggregate_trends(df, ["футбол"], freq="D")
+    assert exc_info.value.step == "aggregate_trends"
+
+    with pytest.raises(NLPAnalysisError) as exc_info:
+        corpus_mod.aggregate_trends_by_source(df, "футбол", freq="D")
+    assert exc_info.value.step == "aggregate_trends_by_source"
 
 
 def test_aggregate_trends_day_and_by_source():

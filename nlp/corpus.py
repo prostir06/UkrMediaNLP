@@ -8,6 +8,8 @@ from collections.abc import Iterable
 
 import pandas as pd
 
+from exceptions import NLPAnalysisError
+
 logger = logging.getLogger(__name__)
 
 
@@ -186,7 +188,10 @@ def search_corpus(
             rows.append(item)
     except Exception as exc:
         logger.exception("search_corpus failed: %s", exc)
-        return work.iloc[0:0].copy()
+        raise NLPAnalysisError(
+            f"Пошук у корпусі не вдався: {exc}",
+            step="search_corpus",
+        ) from exc
     if not rows:
         return work.iloc[0:0].copy()
     out = pd.DataFrame(rows)
@@ -295,7 +300,10 @@ def aggregate_trends(
                 rows.append({"bucket": bucket, "term": term, "count": int(count)})
     except Exception as exc:
         logger.exception("aggregate_trends failed: %s", exc)
-        return pd.DataFrame(columns=["bucket", "term", "count"])
+        raise NLPAnalysisError(
+            f"Агрегація трендів не вдалася: {exc}",
+            step="aggregate_trends",
+        ) from exc
     return pd.DataFrame(rows).sort_values(["bucket", "term"]).reset_index(drop=True)
 
 
@@ -330,4 +338,7 @@ def aggregate_trends_by_source(
         return counts.sort_values(["bucket", "source"]).reset_index(drop=True)
     except Exception as exc:
         logger.exception("aggregate_trends_by_source failed: %s", exc)
-        return pd.DataFrame(columns=["bucket", "source", "count"])
+        raise NLPAnalysisError(
+            f"Порівняння трендів за джерелами не вдалося: {exc}",
+            step="aggregate_trends_by_source",
+        ) from exc

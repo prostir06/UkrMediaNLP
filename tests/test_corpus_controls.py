@@ -37,6 +37,7 @@ def test_build_corpus_partial_failure():
     assert len(df) == 1
     assert df.iloc[0]["source"] == "Good"
     assert any("Bad" in warning for warning in warnings)
+    assert df.attrs.get("scrape_stats_by_source") == []
 
 
 def test_build_corpus_caps_sources_then_filters_and_caps_rows():

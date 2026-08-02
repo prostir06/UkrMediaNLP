@@ -170,6 +170,22 @@ def _commit_corpus_load(
         st.warning("Корпус порожній: статті за заданими умовами не знайдено.")
     else:
         st.success(f"Корпус завантажено: {len(corpus_df)} статей.")
+
+    stats_list = corpus_df.attrs.get("scrape_stats_by_source") or []
+    if isinstance(stats_list, list) and stats_list:
+        parts = []
+        for stats in stats_list:
+            if not isinstance(stats, dict):
+                continue
+            src = stats.get("source", "?")
+            ok = int(stats.get("ok", 0))
+            total = int(stats.get("total", 0))
+            elapsed = stats.get("elapsed_ms")
+            rate = f"{ok / total:.0%}" if total else "—"
+            timing = f", {elapsed} мс" if elapsed is not None else ""
+            parts.append(f"{src}: {ok}/{total} ({rate}){timing}")
+        if parts:
+            st.caption("Успішність скрейпінгу — " + "; ".join(parts))
     return True
 
 
@@ -211,6 +227,15 @@ def render_snapshot(df: pd.DataFrame) -> None:
 
     if df.attrs.get("from_cache"):
         st.caption("Дані з SQLite-кешу статей.")
+
+    scrape_stats = df.attrs.get("scrape_stats")
+    if isinstance(scrape_stats, dict) and scrape_stats.get("total"):
+        ok = int(scrape_stats.get("ok", 0))
+        total_scrape = int(scrape_stats.get("total", 0))
+        elapsed = scrape_stats.get("elapsed_ms")
+        rate = f"{ok / total_scrape:.0%}" if total_scrape else "—"
+        timing = f", {elapsed} мс" if elapsed is not None else ""
+        st.caption(f"Скрейпінг: {ok}/{total_scrape} успішно ({rate}){timing}.")
 
     st.dataframe(
         df[["title", "published", "category", "scraped_ok", "link"]],

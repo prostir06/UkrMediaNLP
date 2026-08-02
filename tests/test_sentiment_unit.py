@@ -1,5 +1,7 @@
 """Unit tests for sentiment helper functions (no model download)."""
 
+import pytest
+
 import nlp.sentiment as sentiment
 
 
@@ -58,6 +60,17 @@ def test_classify_sentiment_batch_with_mock(monkeypatch):
     monkeypatch.setattr(sentiment, "load_cosmus_pipeline", lambda: MockPipeline())
     results = sentiment.classify_sentiment_batch(["Good", "Bad"])
     assert results == ["Позитивна", "Позитивна"]
+
+
+def test_classify_sentiment_batch_raises_on_failure(monkeypatch):
+    from exceptions import NLPAnalysisError
+
+    def boom():
+        raise RuntimeError("pipeline down")
+
+    monkeypatch.setattr(sentiment, "_get_cosmus_pipeline", boom)
+    with pytest.raises(NLPAnalysisError, match="тональності"):
+        sentiment.classify_sentiment_batch(["Текст"])
 
 
 def test_format_load_error_includes_install_hint():

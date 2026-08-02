@@ -6,11 +6,13 @@ via ``cache.load_articles``.
 """
 
 import logging
+import time
 
 import pandas as pd
 
 from config import ARTICLE_CACHE_ENABLED, ARTICLE_COLUMNS, MAX_ARTICLES
 from exceptions import DataLoaderError, RSSFeedError, ScrapingError
+from observability import log_step
 from rss import RSSFeed
 from scraping import scrape_links_parallel
 
@@ -137,45 +139,54 @@ def fetch_articles(
         if df.at[index, "link"]
     ]
 
-    try:
-        scraped = scrape_links_parallel(
-            links,
-            scraper_name=scraper_name,
-            progress_callback=progress_callback,
-        )
-        for index, text in scraped.items():
-            _apply_scrape_result(df, index, text)
-    except Exception as exc:
-        # Thread-pool failures should not abort the entire load; scrape sequentially.
-        logger.exception("Parallel scraping failed, falling back to sequential: %s", exc)
-        total = len(links)
-        for done_idx, (index, link) in enumerate(links, start=1):
-            try:
-                from scraping import full_text
-
-                _apply_scrape_result(
-                    df,
-                    index,
-                    full_text(link, scraper_name=scraper_name),
-                )
-            except ScrapingError as scrape_exc:
-                logger.warning("Scraping error for %s: %s", link, scrape_exc)
-                _apply_scrape_result(df, index, "")
-            except Exception as row_exc:
-                logger.warning("Skipping article %s: %s", link, row_exc)
-                _apply_scrape_result(df, index, "")
-            if progress_callback is not None:
+    scrape_started = time.perf_counter()
+    with log_step(logger, step="scrape", source=source_name):
+        try:
+            scraped = scrape_links_parallel(
+                links,
+                scraper_name=scraper_name,
+                progress_callback=progress_callback,
+            )
+            for index, text in scraped.items():
+                _apply_scrape_result(df, index, text)
+        except Exception as exc:
+            # Thread-pool failures should not abort the entire load; scrape sequentially.
+            logger.exception("Parallel scraping failed, falling back to sequential: %s", exc)
+            total = len(links)
+            for done_idx, (index, link) in enumerate(links, start=1):
                 try:
-                    progress_callback(done_idx, total)
-                except Exception as cb_exc:
-                    logger.debug("Progress callback failed: %s", cb_exc)
+                    from scraping import full_text
+
+                    _apply_scrape_result(
+                        df,
+                        index,
+                        full_text(link, scraper_name=scraper_name),
+                    )
+                except ScrapingError as scrape_exc:
+                    logger.warning("Scraping error for %s: %s", link, scrape_exc)
+                    _apply_scrape_result(df, index, "")
+                except Exception as row_exc:
+                    logger.warning("Skipping article %s: %s", link, row_exc)
+                    _apply_scrape_result(df, index, "")
+                if progress_callback is not None:
+                    try:
+                        progress_callback(done_idx, total)
+                    except Exception as cb_exc:
+                        logger.debug("Progress callback failed: %s", cb_exc)
 
     scraped_count = int(df["scraped_ok"].sum()) if len(df) else 0
+    scrape_stats = {
+        "source": source_name,
+        "ok": scraped_count,
+        "total": int(len(df)),
+        "elapsed_ms": int((time.perf_counter() - scrape_started) * 1000),
+    }
     logger.info(
-        "Scrape stats for %s: %s/%s successful",
+        "Scrape stats for %s: %s/%s successful elapsed_ms=%s",
         source_name,
         scraped_count,
         len(df),
+        scrape_stats["elapsed_ms"],
     )
 
     try:
@@ -183,6 +194,15 @@ def fetch_articles(
     except KeyError as exc:
         logger.warning("Missing title column after load: %s", exc)
         result = df.reset_index(drop=True)
+
+    result.attrs.update(
+        {
+            "total_in_feed": df.attrs.get("total_in_feed", total_in_feed),
+            "max_articles": df.attrs.get("max_articles", limit),
+            "from_cache": False,
+            "scrape_stats": scrape_stats,
+        }
+    )
 
     if ARTICLE_CACHE_ENABLED:
         try:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 import streamlit as st
 
@@ -11,6 +13,9 @@ from config import (
     sources_for_category,
 )
 from nlp.corpus import filter_by_date, merge_source_frames
+from observability import log_step
+
+logger = logging.getLogger(__name__)
 
 CORPUS_FUNCTIONS = frozenset({"Пошук у корпусі", "Тренди тем"})
 
@@ -28,26 +33,35 @@ def build_corpus_from_sources(
     """Load each source; collect warnings; merge, filter, and cap rows."""
     frames: list[pd.DataFrame] = []
     warnings: list[str] = []
+    scrape_stats: list[dict] = []
 
-    for source in list(sources)[: max(0, max_sources)]:
-        try:
-            frame = load_articles_fn(source, progress_callback=progress_callback)
-            if frame is not None and not frame.empty:
-                frames.append(frame)
-        except Exception as exc:
-            warnings.append(f"{source}: {exc}")
+    with log_step(logger, step="corpus_load", source=",".join(sources[:3])):
+        for source in list(sources)[: max(0, max_sources)]:
+            try:
+                frame = load_articles_fn(source, progress_callback=progress_callback)
+                if frame is not None and not frame.empty:
+                    frames.append(frame)
+                    stats = getattr(frame, "attrs", {}).get("scrape_stats")
+                    if isinstance(stats, dict):
+                        scrape_stats.append(stats)
+            except Exception as exc:
+                warnings.append(f"{source}: {exc}")
 
-    if not frames:
-        return pd.DataFrame(), warnings
+        if not frames:
+            empty = pd.DataFrame()
+            empty.attrs["scrape_stats_by_source"] = scrape_stats
+            return empty, warnings
 
-    merged = merge_source_frames(frames, max_rows=sum(len(frame) for frame in frames))
-    filtered = filter_by_date(
-        merged,
-        date_from=date_from,
-        date_to=date_to,
-        include_missing=include_missing,
-    )
-    return merge_source_frames([filtered], max_rows=max_rows), warnings
+        merged = merge_source_frames(frames, max_rows=sum(len(frame) for frame in frames))
+        filtered = filter_by_date(
+            merged,
+            date_from=date_from,
+            date_to=date_to,
+            include_missing=include_missing,
+        )
+        result = merge_source_frames([filtered], max_rows=max_rows)
+        result.attrs["scrape_stats_by_source"] = scrape_stats
+        return result, warnings
 
 
 def load_corpus_into_session(
