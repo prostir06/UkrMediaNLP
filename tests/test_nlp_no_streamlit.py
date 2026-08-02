@@ -6,6 +6,9 @@ import importlib
 def test_nlp_modules_import_without_streamlit_session():
     modules = [
         "nlp.sentiment",
+        "nlp.sentiment_models",
+        "nlp.sentiment_inference",
+        "nlp.resource_guard",
         "nlp.ner",
         "nlp.pos",
         "nlp.topics",
@@ -13,6 +16,7 @@ def test_nlp_modules_import_without_streamlit_session():
         "nlp.wordcloud_render",
         "nlp.ngrams",
         "nlp.news_sentiment",
+        "media_sources",
     ]
     for name in modules:
         mod = importlib.import_module(name)

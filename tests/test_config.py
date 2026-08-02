@@ -29,6 +29,12 @@ def test_scrape_sample_urls_cover_all_sources():
     assert all(str(url).startswith("http") for url in SCRAPE_SAMPLE_URLS.values())
 
 
+def test_news_source_config_typeddict_keys():
+    from media_sources import NewsSourceConfig, REQUIRED_SOURCE_KEYS
+
+    assert set(NewsSourceConfig.__annotations__) == set(REQUIRED_SOURCE_KEYS)
+
+
 def test_media_categories_and_news_sources():
     assert MEDIA_CATEGORIES == (
         "Новини",

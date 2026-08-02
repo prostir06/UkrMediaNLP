@@ -60,7 +60,7 @@ def test_sources_for_category_covers_all_media():
 
 def test_sources_for_category_skips_malformed(monkeypatch):
     monkeypatch.setattr(
-        "config.NEWS_SOURCES",
+        "media_sources.NEWS_SOURCES",
         {
             "Ok": {"category": "Новини", "rss_url": "https://a", "scraper": "g", "intro": ""},
             "Bad": "nope",
@@ -83,7 +83,7 @@ def test_get_source_config_unknown():
 
 
 def test_get_source_config_rejects_non_dict(monkeypatch):
-    monkeypatch.setattr("config.NEWS_SOURCES", {"X": "bad"})
+    monkeypatch.setattr("media_sources.NEWS_SOURCES", {"X": "bad"})
     with pytest.raises(KeyError):
         get_source_config("X")
 

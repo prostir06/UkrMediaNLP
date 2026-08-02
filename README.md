@@ -35,7 +35,8 @@ Streamlit-додаток для збору новин з RSS українськ�
 │   ├── charts.py / renderers.py
 ├── cache.py                # Thin wrappers (моделі + load_articles → SQLite)
 ├── article_cache.py        # SQLite TTL-кеш статей
-├── config.py               # Джерела новин і константи
+├── config.py               # NLP caps / function lists (re-exports media_sources)
+├── media_sources.py        # NEWS_SOURCES TypedDict registry + sample URLs
 ├── data_loader.py          # fetch_articles (RSS + scrape)
 ├── observability.py        # structured step= / elapsed_ms logs
 ├── url_utils.py            # SSRF URL validation

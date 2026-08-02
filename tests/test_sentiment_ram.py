@@ -6,32 +6,32 @@ import pytest
 import torch
 
 from exceptions import NLPAnalysisError
-from nlp import sentiment
+from nlp import resource_guard, sentiment, sentiment_inference, sentiment_models
 
 
 def test_require_ram_passes_when_enough(monkeypatch):
-    monkeypatch.setattr(sentiment, "_available_ram_mb", lambda: 4096)
-    sentiment._require_ram_for_transformers("emotions_load", min_mb=1536)
+    monkeypatch.setattr(resource_guard, "available_ram_mb", lambda: 4096)
+    resource_guard.require_ram_for_transformers("emotions_load", min_mb=1536)
 
 
 def test_require_ram_raises_when_low(monkeypatch):
-    monkeypatch.setattr(sentiment, "_available_ram_mb", lambda: 200)
+    monkeypatch.setattr(resource_guard, "available_ram_mb", lambda: 200)
     with pytest.raises(NLPAnalysisError) as exc_info:
-        sentiment._require_ram_for_transformers("emotions_load", min_mb=1536)
+        resource_guard.require_ram_for_transformers("emotions_load", min_mb=1536)
     assert exc_info.value.step == "emotions_load"
     assert "RAM" in str(exc_info.value) or "МБ" in str(exc_info.value)
 
 
 def test_require_ram_skips_when_unknown(monkeypatch):
-    monkeypatch.setattr(sentiment, "_available_ram_mb", lambda: None)
-    sentiment._require_ram_for_transformers("emotions_load", min_mb=99999)
+    monkeypatch.setattr(resource_guard, "available_ram_mb", lambda: None)
+    resource_guard.require_ram_for_transformers("emotions_load", min_mb=99999)
 
 
 def test_require_ram_invalid_env_threshold(monkeypatch):
     monkeypatch.setenv("MIN_TRANSFORMERS_RAM_MB", "not-a-number")
-    monkeypatch.setattr(sentiment, "_available_ram_mb", lambda: 200)
+    monkeypatch.setattr(resource_guard, "available_ram_mb", lambda: 200)
     with pytest.raises(NLPAnalysisError):
-        sentiment._require_ram_for_transformers("emotions_load")
+        resource_guard.require_ram_for_transformers("emotions_load")
 
 
 def test_maybe_quantize_skips_by_default(monkeypatch):
@@ -43,15 +43,19 @@ def test_maybe_quantize_skips_by_default(monkeypatch):
         called["n"] += 1
         return model
 
-    monkeypatch.setattr(sentiment, "_quantize_model_if_cpu", boom)
-    assert sentiment._maybe_quantize(sentinel) is sentinel
+    monkeypatch.setattr(resource_guard, "quantize_model_if_cpu", boom)
+    assert resource_guard.maybe_quantize(sentinel) is sentinel
     assert called["n"] == 0
 
 
 def test_maybe_quantize_runs_when_enabled(monkeypatch):
     monkeypatch.setenv("QUANTIZE_CPU", "1")
-    monkeypatch.setattr(sentiment, "_quantize_model_if_cpu", lambda model: "quantized")
-    assert sentiment._maybe_quantize(object()) == "quantized"
+    monkeypatch.setattr(
+        resource_guard,
+        "quantize_model_if_cpu",
+        lambda model: "quantized",
+    )
+    assert resource_guard.maybe_quantize(object()) == "quantized"
 
 
 def test_quantize_model_soft_fails(monkeypatch):
@@ -69,7 +73,7 @@ def test_quantize_model_soft_fails(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
 
     sentinel = object()
-    assert sentiment._quantize_model_if_cpu(sentinel) is sentinel
+    assert resource_guard.quantize_model_if_cpu(sentinel) is sentinel
 
 
 def test_probs_to_emotions_none_and_dominant():
@@ -108,7 +112,7 @@ def test_classify_emotions_batch_with_mock_model(monkeypatch):
             return {"input_ids": torch.tensor([[1, 2], [3, 4]])}
 
     monkeypatch.setattr(
-        sentiment,
+        sentiment_inference,
         "_get_emotions_model",
         lambda: (FakeTokenizer(), FakeModel(), torch),
     )
@@ -124,8 +128,8 @@ def test_classify_emotions_batch_with_mock_model(monkeypatch):
 
 def test_load_emotions_model_respects_ram_gate(monkeypatch):
     monkeypatch.setattr(
-        sentiment,
-        "_require_ram_for_transformers",
+        sentiment_models,
+        "require_ram_for_transformers",
         lambda step, min_mb=None: (_ for _ in ()).throw(
             NLPAnalysisError("low ram", step=step)
         ),

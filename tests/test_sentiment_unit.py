@@ -3,6 +3,7 @@
 import pytest
 
 import nlp.sentiment as sentiment
+import nlp.sentiment_inference as sentiment_inference
 
 
 def test_truncate_limits_length():
@@ -21,43 +22,45 @@ def test_label_to_ua_maps_known_labels():
 
 
 def test_classify_sentiment_cosmus_fallback(monkeypatch):
-    sentiment._COSMUS_PIPELINE = None
+    sentiment_inference._COSMUS_PIPELINE = None
 
     def broken_pipeline():
         raise IndexError("bad output")
 
-    monkeypatch.setattr(sentiment, "load_cosmus_pipeline", broken_pipeline)
+    monkeypatch.setattr(sentiment_inference, "load_cosmus_pipeline", broken_pipeline)
     assert sentiment.classify_sentiment_cosmus("Тестовий заголовок") == "Нейтральна"
 
 
 def test_classify_emotions_fallback(monkeypatch):
-    sentiment._EMOTIONS_MODEL = None
+    sentiment_inference._EMOTIONS_MODEL = None
 
     def broken_model():
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(sentiment, "load_emotions_model", broken_model)
+    monkeypatch.setattr(sentiment_inference, "load_emotions_model", broken_model)
     assert sentiment.classify_emotions("Тест") == ["Без емоцій"]
 
 
 def test_dominant_emotion_fallback(monkeypatch):
-    sentiment._EMOTIONS_MODEL = None
+    sentiment_inference._EMOTIONS_MODEL = None
 
     def broken_model():
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(sentiment, "load_emotions_model", broken_model)
+    monkeypatch.setattr(sentiment_inference, "load_emotions_model", broken_model)
     assert sentiment._dominant_emotion("Тест") == "Без емоцій"
 
 
 def test_classify_sentiment_batch_with_mock(monkeypatch):
-    sentiment._COSMUS_PIPELINE = None
-
     class MockPipeline:
         def __call__(self, texts, batch_size=8):
             return [{"label": "positive"} for _ in texts]
 
-    monkeypatch.setattr(sentiment, "load_cosmus_pipeline", lambda: MockPipeline())
+    monkeypatch.setattr(
+        sentiment_inference,
+        "_get_cosmus_pipeline",
+        lambda: MockPipeline(),
+    )
     results = sentiment.classify_sentiment_batch(["Good", "Bad"])
     assert results == ["Позитивна", "Позитивна"]
 
@@ -68,7 +71,7 @@ def test_classify_sentiment_batch_raises_on_failure(monkeypatch):
     def boom():
         raise RuntimeError("pipeline down")
 
-    monkeypatch.setattr(sentiment, "_get_cosmus_pipeline", boom)
+    monkeypatch.setattr(sentiment_inference, "_get_cosmus_pipeline", boom)
     with pytest.raises(NLPAnalysisError, match="тональності"):
         sentiment.classify_sentiment_batch(["Текст"])
 

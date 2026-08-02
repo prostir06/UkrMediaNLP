@@ -119,7 +119,7 @@ def load_corpus_into_session(
     return df, warnings
 
 
-def render_corpus_sidebar(category: str, show_lda_toggle: bool = False) -> dict:
+def render_corpus_sidebar(category: str) -> dict:
     """Render corpus controls and return their current values."""
     candidates = sources_for_category(category)
     all_category = st.sidebar.checkbox(
@@ -153,9 +153,6 @@ def render_corpus_sidebar(category: str, show_lda_toggle: bool = False) -> dict:
         "Завантажити / оновити корпус",
         key="corpus_load_btn",
     )
-
-    # Reserved for the trends UI in a later task.
-    _ = show_lda_toggle
 
     return {
         "sources": candidates if all_category else list(selected),

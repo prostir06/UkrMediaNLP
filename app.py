@@ -223,7 +223,7 @@ def main() -> None:
             st.error("Не вдалося визначити категорію для корпусу.")
             return
         try:
-            corpus_controls = render_corpus_sidebar(category, show_lda_toggle=False)
+            corpus_controls = render_corpus_sidebar(category)
         except Exception as exc:
             logger.exception("Corpus sidebar render failed")
             st.error(f"Не вдалося показати налаштування корпусу: {exc}")
