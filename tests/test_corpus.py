@@ -126,7 +126,7 @@ def test_search_corpus_unexpected_error_raises(monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("search blew up")
 
-    monkeypatch.setattr(corpus_mod, "row_matches", boom)
+    monkeypatch.setattr(corpus_mod, "_series_matches", boom)
 
     with pytest.raises(NLPAnalysisError) as exc_info:
         corpus_mod.search_corpus(df, "x")
@@ -233,3 +233,45 @@ def test_merge_source_frames():
     assert len(merged) == 2
     assert set(merged["source"]) == {"A", "B"}
     assert "published_dt" in merged.columns
+
+
+def test_ensure_search_blobs_idempotent():
+    from nlp.corpus import ensure_search_blobs
+
+    df = pd.DataFrame(
+        {
+            "title": ["Титул"],
+            "content": [""],
+            "description": ["Опис статті"],
+        }
+    )
+    once = ensure_search_blobs(df)
+    twice = ensure_search_blobs(once)
+    assert once["search_blob_content"].iloc[0] == "Опис статті"
+    assert "Титул" in once["search_blob"].iloc[0]
+    assert twice is once
+
+
+def test_search_corpus_vectorized_perf_guard():
+    """Regression guard: 2k rows should search quickly without iterrows cost."""
+    import time
+
+    from nlp.corpus import search_corpus
+
+    n = 2000
+    df = pd.DataFrame(
+        {
+            "title": [f"заголовок {i} футбол" if i % 17 == 0 else f"інше {i}" for i in range(n)],
+            "content": [f"текст {i}" for i in range(n)],
+            "description": [""] * n,
+            "published": ["2024-03-01"] * n,
+            "source": ["A"] * n,
+            "link": [f"u{i}" for i in range(n)],
+        }
+    )
+    started = time.perf_counter()
+    hits = search_corpus(df, "футбол", fields=("title", "content"), whole_word=False)
+    elapsed = time.perf_counter() - started
+    assert len(hits) == sum(1 for i in range(n) if i % 17 == 0)
+    # Generous CI budget; vectorized path is typically well under 1s.
+    assert elapsed < 2.5, f"search too slow: {elapsed:.3f}s"

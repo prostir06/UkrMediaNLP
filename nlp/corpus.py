@@ -122,6 +122,97 @@ def article_search_text(row: pd.Series, fields: Iterable[str]) -> str:
     return "\n".join(parts)
 
 
+def ensure_search_blobs(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add vectorized search columns once after corpus load.
+
+    Columns:
+    - ``search_blob_title``
+    - ``search_blob_content`` (falls back to description when content empty)
+    - ``search_blob`` (title + content)
+    """
+    if df is None or df.empty:
+        return df.copy() if df is not None else pd.DataFrame()
+    if (
+        "search_blob" in df.columns
+        and "search_blob_title" in df.columns
+        and "search_blob_content" in df.columns
+    ):
+        return df
+
+    out = df.copy()
+    title = (
+        out["title"].fillna("").astype(str)
+        if "title" in out.columns
+        else pd.Series("", index=out.index, dtype=str)
+    )
+    content = (
+        out["content"].fillna("").astype(str)
+        if "content" in out.columns
+        else pd.Series("", index=out.index, dtype=str)
+    )
+    description = (
+        out["description"].fillna("").astype(str)
+        if "description" in out.columns
+        else pd.Series("", index=out.index, dtype=str)
+    )
+    content_blob = content.where(content.str.strip().astype(bool), description)
+    out["search_blob_title"] = title
+    out["search_blob_content"] = content_blob
+    out["search_blob"] = (title + "\n" + content_blob).str.strip()
+    return out
+
+
+def ensure_lemma_blobs(df: pd.DataFrame) -> pd.DataFrame:
+    """Batch-lemmatize search blobs when lemma search is requested."""
+    work = ensure_search_blobs(df)
+    if work.empty or "search_blob_lemma" in work.columns:
+        return work
+    out = work.copy()
+    try:
+        from nlp.model_registry import resolve_spacy_nlp
+        from nlp.text_utils import lemmatize_texts
+
+        nlp = resolve_spacy_nlp()
+        blobs = out["search_blob"].fillna("").astype(str).tolist()
+        titles = out["search_blob_title"].fillna("").astype(str).tolist()
+        out["search_blob_lemma"] = lemmatize_texts(blobs, nlp)
+        out["search_blob_title_lemma"] = lemmatize_texts(titles, nlp)
+    except Exception as exc:
+        logger.warning("ensure_lemma_blobs failed, falling back to surface forms: %s", exc)
+        out["search_blob_lemma"] = out["search_blob"]
+        out["search_blob_title_lemma"] = out["search_blob_title"]
+    return out
+
+
+def _blob_column_for_fields(fields: Iterable[str], *, lemmas: bool = False) -> str:
+    field_list = tuple(fields) or ("title", "content")
+    only_title = field_list == ("title",) or set(field_list) == {"title"}
+    only_content = field_list == ("content",) or set(field_list) == {"content"}
+    if lemmas:
+        if only_title:
+            return "search_blob_title_lemma"
+        return "search_blob_lemma"
+    if only_title:
+        return "search_blob_title"
+    if only_content:
+        return "search_blob_content"
+    return "search_blob"
+
+
+def _series_matches(series: pd.Series, query: str, *, whole_word: bool) -> pd.Series:
+    """Vectorized substring / whole-word match (case-insensitive)."""
+    q = (query or "").strip()
+    if not q:
+        return pd.Series(False, index=series.index)
+    # Force python string backend — Arrow/RE2 rejects inline (?iu) flags.
+    hay = series.fillna("").astype(str).astype(object).astype(str)
+    if whole_word:
+        pattern = rf"\b{re.escape(q)}\b"
+        return hay.str.contains(pattern, case=False, regex=True, na=False)
+    return hay.str.contains(q, case=False, regex=False, na=False)
+
+
 def make_snippet(text: str, query: str, width: int = 120) -> str:
     lowered = text.lower()
     q = query.lower().strip()
@@ -170,36 +261,48 @@ def search_corpus(
     q = (query or "").strip()
     if not q or df.empty:
         return df.iloc[0:0].copy()
-    work = ensure_published_dt(df)
-    field_list = tuple(fields) or ("title", "content")
-    rows = []
     try:
-        for _, row in work.iterrows():
-            title = str(row.get("title", "") or "")
-            blob = article_search_text(row, field_list)
-            if not row_matches(blob, q, whole_word=whole_word, use_lemmas=use_lemmas):
-                continue
-            title_hit = 2 if row_matches(title, q, whole_word=whole_word, use_lemmas=use_lemmas) else 0
-            content_hit = 1 if row_matches(blob, q, whole_word=whole_word, use_lemmas=use_lemmas) else 0
-            relevance = title_hit + content_hit
-            item = row.to_dict()
-            item["snippet"] = make_snippet(blob, q)
-            item["relevance"] = relevance
-            rows.append(item)
+        work = ensure_published_dt(df)
+        work = ensure_lemma_blobs(work) if use_lemmas else ensure_search_blobs(work)
+        field_list = tuple(fields) or ("title", "content")
+        blob_col = _blob_column_for_fields(field_list, lemmas=use_lemmas)
+        title_col = (
+            "search_blob_title_lemma" if use_lemmas else "search_blob_title"
+        )
+        needle = q
+        if use_lemmas:
+            try:
+                from nlp.model_registry import resolve_spacy_nlp
+                from nlp.text_utils import lemmatize_texts
+
+                needle = lemmatize_texts([q], resolve_spacy_nlp())[0]
+            except Exception as exc:
+                logger.debug("query lemmatize fallback: %s", exc)
+
+        blob_mask = _series_matches(work[blob_col], needle, whole_word=whole_word)
+        if not bool(blob_mask.any()):
+            return work.iloc[0:0].copy()
+
+        matched = work.loc[blob_mask].copy()
+        title_mask = _series_matches(matched[title_col], needle, whole_word=whole_word)
+        matched["relevance"] = title_mask.astype(int) * 2 + 1
+        matched["snippet"] = [
+            make_snippet(str(text), q)
+            for text in matched[blob_col].fillna("").astype(str)
+        ]
+        return matched.sort_values(
+            by=["published_dt", "relevance"],
+            ascending=[False, False],
+            na_position="last",
+        ).reset_index(drop=True)
+    except NLPAnalysisError:
+        raise
     except Exception as exc:
         logger.exception("search_corpus failed: %s", exc)
         raise NLPAnalysisError(
             f"Пошук у корпусі не вдався: {exc}",
             step="search_corpus",
         ) from exc
-    if not rows:
-        return work.iloc[0:0].copy()
-    out = pd.DataFrame(rows)
-    return out.sort_values(
-        by=["published_dt", "relevance"],
-        ascending=[False, False],
-        na_position="last",
-    ).reset_index(drop=True)
 
 
 def parse_manual_terms(text: str) -> list[str]:
@@ -269,12 +372,9 @@ def _term_hit_mask(
     fields: Iterable[str],
     whole_word: bool,
 ) -> pd.Series:
-    field_list = tuple(fields) or ("title", "content")
-
-    def _hit(row: pd.Series) -> bool:
-        return row_matches(article_search_text(row, field_list), term, whole_word=whole_word)
-
-    return df.apply(_hit, axis=1)
+    work = ensure_search_blobs(df)
+    blob_col = _blob_column_for_fields(fields, lemmas=False)
+    return _series_matches(work[blob_col], term, whole_word=whole_word)
 
 
 def aggregate_trends(
@@ -291,6 +391,7 @@ def aggregate_trends(
     rows: list[dict] = []
     try:
         work = work.copy()
+        work = ensure_search_blobs(work)
         work["bucket"] = _to_bucket(work["published_dt"], freq)
         buckets = _full_bucket_range(work["bucket"], freq)
         for term in terms:
@@ -320,6 +421,7 @@ def aggregate_trends_by_source(
         return pd.DataFrame(columns=["bucket", "source", "count"])
     try:
         work = work.copy()
+        work = ensure_search_blobs(work)
         work["bucket"] = _to_bucket(work["published_dt"], freq)
         mask = _term_hit_mask(work, term, fields, whole_word)
         buckets = _full_bucket_range(work["bucket"], freq)

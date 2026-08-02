@@ -9,6 +9,38 @@ from ui.corpus_controls import (
 )
 
 
+def test_build_corpus_concurrent_loads_all_sources(monkeypatch):
+    monkeypatch.setattr(corpus_controls, "CORPUS_LOAD_WORKERS", 3)
+    seen = []
+
+    def fake_load(name, progress_callback=None):
+        seen.append(name)
+        return pd.DataFrame(
+            {
+                "title": [name],
+                "published": ["2024-06-01"],
+                "content": ["body"],
+                "source": [name],
+                "link": ["u"],
+                "description": [""],
+            }
+        )
+
+    df, warnings = build_corpus_from_sources(
+        ["A", "B", "C"],
+        load_articles_fn=fake_load,
+        max_sources=10,
+        max_rows=50,
+        date_from=None,
+        date_to=None,
+        include_missing=True,
+    )
+    assert warnings == []
+    assert set(seen) == {"A", "B", "C"}
+    assert set(df["source"]) == {"A", "B", "C"}
+    assert "search_blob" in df.columns
+
+
 def test_build_corpus_partial_failure():
     def fake_load(name, progress_callback=None):
         if name == "Bad":
@@ -63,10 +95,11 @@ def test_build_corpus_caps_sources_then_filters_and_caps_rows():
         include_missing=False,
     )
 
-    assert loaded == ["One", "Two"]
+    assert set(loaded) == {"One", "Two"}
     assert len(df) == 1
     assert df.iloc[0]["published"] == "2024-06-02"
     assert warnings == []
+    assert "search_blob" in df.columns
 
 
 def test_build_corpus_total_failure_returns_empty_frame_and_warnings():

@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import streamlit as st
 
 from config import (
+    CORPUS_LOAD_WORKERS,
     MAX_CORPUS_ARTICLES_TOTAL,
     MAX_CORPUS_SOURCES,
     sources_for_category,
 )
-from nlp.corpus import filter_by_date, merge_source_frames
+from nlp.corpus import ensure_search_blobs, filter_by_date, merge_source_frames
 from observability import log_step
 
 logger = logging.getLogger(__name__)
@@ -30,22 +32,49 @@ def build_corpus_from_sources(
     include_missing: bool,
     progress_callback=None,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Load each source; collect warnings; merge, filter, and cap rows."""
+    """Load each source (bounded concurrency); merge, filter, and cap rows."""
     frames: list[pd.DataFrame] = []
     warnings: list[str] = []
     scrape_stats: list[dict] = []
+    selected = list(sources)[: max(0, max_sources)]
 
-    with log_step(logger, step="corpus_load", source=",".join(sources[:3])):
-        for source in list(sources)[: max(0, max_sources)]:
-            try:
-                frame = load_articles_fn(source, progress_callback=progress_callback)
-                if frame is not None and not frame.empty:
-                    frames.append(frame)
-                    stats = getattr(frame, "attrs", {}).get("scrape_stats")
-                    if isinstance(stats, dict):
-                        scrape_stats.append(stats)
-            except Exception as exc:
-                warnings.append(f"{source}: {exc}")
+    def _load_one(source: str) -> tuple[str, pd.DataFrame | None, str | None]:
+        try:
+            # progress_callback is not used on worker threads (Streamlit is not
+            # thread-safe); rate limiting still applies inside scrape helpers.
+            frame = load_articles_fn(source, progress_callback=None)
+            return source, frame, None
+        except Exception as exc:
+            return source, None, str(exc)
+
+    with log_step(logger, step="corpus_load", source=",".join(selected[:3])):
+        workers = max(1, min(int(CORPUS_LOAD_WORKERS), len(selected) or 1))
+        if len(selected) <= 1 or workers == 1:
+            ordered = [_load_one(source) for source in selected]
+        else:
+            ordered = []
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(_load_one, source): source for source in selected
+                }
+                results: dict[str, tuple[str, pd.DataFrame | None, str | None]] = {}
+                for future in as_completed(futures):
+                    source = futures[future]
+                    try:
+                        results[source] = future.result()
+                    except Exception as exc:
+                        results[source] = (source, None, str(exc))
+                ordered = [results[source] for source in selected]
+
+        for source, frame, error in ordered:
+            if error:
+                warnings.append(f"{source}: {error}")
+                continue
+            if frame is not None and not frame.empty:
+                frames.append(frame)
+                stats = getattr(frame, "attrs", {}).get("scrape_stats")
+                if isinstance(stats, dict):
+                    scrape_stats.append(stats)
 
         if not frames:
             empty = pd.DataFrame()
@@ -59,7 +88,9 @@ def build_corpus_from_sources(
             date_to=date_to,
             include_missing=include_missing,
         )
-        result = merge_source_frames([filtered], max_rows=max_rows)
+        result = ensure_search_blobs(
+            merge_source_frames([filtered], max_rows=max_rows)
+        )
         result.attrs["scrape_stats_by_source"] = scrape_stats
         return result, warnings
 
