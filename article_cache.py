@@ -123,7 +123,7 @@ def make_cache_key(source_name: str, feed_url: str, max_articles: int) -> str:
     Build a stable SHA-256 hash cache key for a given scraping configuration.
 
     Args:
-        source_name: Media source label (e.g., 'NV', 'Українська правда').
+        source_name: Media source label (e.g., 'NV', 'TSN').
         feed_url: RSS feed URL endpoint.
         max_articles: Maximum article count limit.
 

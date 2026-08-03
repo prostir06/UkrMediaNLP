@@ -19,7 +19,7 @@ def test_news_sources_have_required_keys():
 
 
 def test_news_sources_count():
-    assert len(NEWS_SOURCES) == 29
+    assert len(NEWS_SOURCES) == 28
 
 
 def test_scrape_sample_urls_cover_all_sources():
@@ -46,11 +46,12 @@ def test_media_categories_and_news_sources():
     economy = sources_for_category("Економіка")
     sport = sources_for_category("Спорт")
     tech = sources_for_category("Технології")
-    assert len(news) == 8
+    assert len(news) == 7
     assert len(economy) == 5
     assert len(sport) == 7
     assert len(tech) == 9
     assert "УНІАН" in news
+    assert "Українська правда" not in news
     assert "Економічна правда" in economy
     assert "Football.ua" in sport
     assert "NV (Спорт)" in sport

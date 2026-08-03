@@ -309,7 +309,7 @@ def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):
     monkeypatch.setattr(
         corpus_controls,
         "sources_for_category",
-        lambda category: ["NV", "Українська правда"],
+        lambda category: ["NV", "Liga.net"],
     )
 
     result = render_corpus_sidebar("Новини")
@@ -323,7 +323,7 @@ def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):
         "force_refresh",
         "load_clicked",
     }
-    assert result["sources"] == ["NV", "Українська правда"]
+    assert result["sources"] == ["NV", "Liga.net"]
     assert result["force_refresh"] is False
     assert calls["corpus_sources_ms"]["disabled"] is True
     assert set(calls) == {

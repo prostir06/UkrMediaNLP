@@ -103,3 +103,64 @@ def test_every_source_has_https_rss():
     for name, cfg in NEWS_SOURCES.items():
         assert cfg["rss_url"].startswith("https://"), name
         assert cfg["category"] in MEDIA_CATEGORIES, name
+
+
+def test_sample_url_from_rss_happy_and_soft_fail():
+    from media_sources import _sample_url_from_rss
+
+    assert _sample_url_from_rss("https://nv.ua/ukr/rss/all.xml") == "https://nv.ua/"
+    assert _sample_url_from_rss("not-a-url") == "not-a-url"
+    assert _sample_url_from_rss("") == ""
+    assert _sample_url_from_rss(None) == ""  # type: ignore[arg-type]
+
+
+def test_build_scrape_sample_urls_prefers_overrides():
+    from media_sources import build_scrape_sample_urls
+
+    registry = {
+        "A": {
+            "category": "Новини",
+            "rss_url": "https://example.com/feed.xml",
+            "scraper": "generic",
+            "intro": "",
+        },
+        "Bad": "nope",
+    }
+    overrides = {"A": "https://landing.example/"}
+    urls = build_scrape_sample_urls(registry, overrides)
+    assert urls["A"] == "https://landing.example/"
+    assert "Bad" not in urls
+
+
+def test_build_scrape_sample_urls_derives_from_rss():
+    from media_sources import build_scrape_sample_urls
+
+    registry = {
+        "B": {
+            "category": "Новини",
+            "rss_url": "https://news.example.org/path/rss.xml",
+            "scraper": "generic",
+            "intro": "",
+        },
+    }
+    urls = build_scrape_sample_urls(registry, overrides={})
+    assert urls["B"] == "https://news.example.org/"
+
+
+def test_build_scrape_sample_urls_bad_registry():
+    from media_sources import build_scrape_sample_urls
+
+    assert build_scrape_sample_urls("oops") == {}  # type: ignore[arg-type]
+
+
+def test_source_category_non_string_category(monkeypatch):
+    monkeypatch.setattr(
+        "media_sources.NEWS_SOURCES",
+        {"X": {"category": 123, "rss_url": "https://a", "scraper": "g", "intro": ""}},
+    )
+    assert source_category("X") is None
+
+
+def test_ukrainska_pravda_removed_from_registry():
+    assert "Українська правда" not in NEWS_SOURCES
+    assert "Економічна правда" in NEWS_SOURCES
