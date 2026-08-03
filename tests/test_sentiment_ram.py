@@ -3,10 +3,12 @@
 from types import SimpleNamespace
 
 import pytest
-import torch
 
-from exceptions import NLPAnalysisError
-from nlp import resource_guard, sentiment, sentiment_inference, sentiment_models
+# Cloud / light CI installs no torch — skip this module at collection time.
+torch = pytest.importorskip("torch")
+
+from exceptions import NLPAnalysisError  # noqa: E402
+from nlp import resource_guard, sentiment, sentiment_inference, sentiment_models  # noqa: E402
 
 
 def test_require_ram_passes_when_enough(monkeypatch):
