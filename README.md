@@ -53,7 +53,7 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── requirements-cloud.txt  # Light Cloud (без torch; sqlalchemy optional)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
-├── tests/                  # pytest (~280 тестів)
+├── tests/                  # pytest (~310 тестів)
 ├── Dockerfile
 └── docker-compose.yml      # app + Postgres 16 (+ profiles)
 ```
@@ -76,7 +76,7 @@ python -m spacy download uk_core_news_sm
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-pytest -m "not slow" --cov=. --cov-fail-under=65
+pytest -m "not slow" --cov=. --cov-fail-under=70
 ```
 
 ## Запуск локально
@@ -149,10 +149,11 @@ docker compose --profile with-nginx up --build
 
 GitHub Actions (`.github/workflows/tests.yml`):
 
-- pytest coverage gate **≥ 65%** (omit: `app.py`, `streamlit_app.py`; `ui/*` включено)
+- pytest coverage gate **≥ 70%** (omit: `app.py`, `streamlit_app.py`; `ui/*` включено)
 - ruff lint
-- cloud-deps job (`requirements-cloud.txt` + `LIGHT_CLOUD=1`)
-- docker compose build smoke
+- cloud-deps job (`requirements-cloud.txt` + `LIGHT_CLOUD=1`, cov ≥50%)
+- docker compose build smoke (+ Postgres + alembic)
+- unit job Postgres service + `TEST_DATABASE_URL` dialect smoke
 
 Weekly scraper health: `.github/workflows/scraper-health.yml`
 
@@ -202,7 +203,7 @@ LIGHT_CLOUD = "1"
 
 ## Підтримувані медіа
 
-Категорії в сайдбарі (**Категорія → Медіа**). Повний реєстр — у `config.NEWS_SOURCES`.
+Категорії в сайдбарі (**Категорія → Медіа**). Повний реєстр — у `media_sources.NEWS_SOURCES` (також реекспорт з `config`).
 
 | Категорія | К-сть | Приклади |
 |-----------|------:|----------|

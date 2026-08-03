@@ -86,30 +86,35 @@ def _as_utc(value: object) -> datetime | None:
         return None
 
 
-def _row_to_article_dict(row: pd.Series, scraped_at: datetime) -> dict | None:
+def _row_to_article_dict(row: object, scraped_at: datetime) -> dict | None:
     """
-    Map one DataFrame row to an Article column dict.
+    Map one DataFrame row (Series or mapping) to an Article column dict.
 
     Returns ``None`` when the row has no usable URL (cannot dedupe).
     """
     try:
-        url = str(row.get("link", "") or "").strip()
+        if isinstance(row, pd.Series):
+            get = row.get
+        elif isinstance(row, dict):
+            get = row.get
+        else:
+            return None
+        url = str(get("link", "") or "").strip()
         if not url:
             return None
         digest = canonical_url_hash(url)
-        title = str(row.get("title", "") or "").strip() or "(без заголовка)"
-        published = _as_utc(row.get("published_dt", row.get("published")))
+        title = str(get("title", "") or "").strip() or "(без заголовка)"
+        published = _as_utc(get("published_dt", get("published")))
         return {
             "url_hash": digest,
             "url": url,
-            "source": str(row.get("source", "") or ""),
-            "category": str(row.get("category", "") or ""),
+            "source": str(get("source", "") or ""),
+            "category": str(get("category", "") or ""),
             "title": title,
-            # Truncate logging elsewhere; store full text for search.
-            "content": str(row.get("content", "") or ""),
+            "content": str(get("content", "") or ""),
             "published_at": published,
             "scraped_at": scraped_at,
-            "scraped_ok": bool(row.get("scraped_ok", False)),
+            "scraped_ok": bool(get("scraped_ok", False)),
         }
     except Exception as exc:
         logger.warning("_row_to_article_dict skipped row: %s", exc)
@@ -149,8 +154,8 @@ def upsert_articles(session: Session, df: pd.DataFrame) -> int:
     by_hash: dict[str, dict] = {}
     now = datetime.now(timezone.utc)
     try:
-        for _, row in work.iterrows():
-            payload = _row_to_article_dict(row, now)
+        for record in work.to_dict(orient="records"):
+            payload = _row_to_article_dict(record, now)
             if payload is None:
                 continue
             by_hash[payload["url_hash"]] = payload

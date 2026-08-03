@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from config import MAX_POS_ARTICLES
-from nlp_analysis import plot_parts_of_speech_barchart
+from ui.renderers import plot_parts_of_speech_barchart
 from ui.widgets import sample_size_slider
 
 POS_DESCRIPTIONS = [

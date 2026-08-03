@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from nlp_analysis import display_topic_modeling
+from ui.renderers import display_topic_modeling
 
 
 def render_topic_modeling(content: pd.Series) -> None:

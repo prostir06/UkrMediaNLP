@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from nlp.preprocessing import NER_LABELS_UA
-from nlp_analysis import plot_most_common_named_entity_barchart
+from ui.renderers import plot_most_common_named_entity_barchart
 from ui.widgets import sample_size_slider
 
 

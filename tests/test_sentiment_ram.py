@@ -78,7 +78,7 @@ def test_quantize_model_soft_fails(monkeypatch):
 
 def test_probs_to_emotions_none_and_dominant():
     id2label = {0: "Joy", 1: "Anger", 2: "None"}
-    detected, dominant = sentiment._probs_to_emotions([0.1, 0.1, 0.1], id2label)
+    detected, dominant = sentiment_inference._probs_to_emotions([0.1, 0.1, 0.1], id2label)
     assert detected == ["Без емоцій"]
     assert dominant == "Без емоцій"
 
@@ -86,7 +86,7 @@ def test_probs_to_emotions_none_and_dominant():
 def test_probs_to_emotions_detects_joy(monkeypatch):
     monkeypatch.setitem(sentiment.EMOTION_THRESHOLDS, "Joy", 0.3)
     id2label = {0: "Joy", 1: "Anger"}
-    detected, dominant = sentiment._probs_to_emotions([0.8, 0.1], id2label)
+    detected, dominant = sentiment_inference._probs_to_emotions([0.8, 0.1], id2label)
     assert "Радість" in detected
     assert dominant == "Радість"
 

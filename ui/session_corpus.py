@@ -85,7 +85,9 @@ def commit_corpus_load(
     if origin == "postgres" and not corpus_df.empty:
         st.caption(f"Джерело: Postgres ({len(corpus_df)} статей)")
     elif not corpus_df.empty:
-        st.caption(f"Джерело: Live RSS ({len(corpus_df)} статей)")
+        forced = corpus_df.attrs.get("corpus_force_refresh")
+        live_label = "Live RSS (примусове оновлення)" if forced else "Live RSS"
+        st.caption(f"Джерело: {live_label} ({len(corpus_df)} статей)")
         upsert_error = corpus_df.attrs.get("store_upsert_error")
         if upsert_error:
             st.warning(f"Не вдалося зберегти корпус у Postgres: {upsert_error}")

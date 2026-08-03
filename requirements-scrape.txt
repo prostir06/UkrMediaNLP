@@ -1,0 +1,6 @@
+# Minimal deps for weekly scraper health (no torch / transformers).
+pandas>=2.0,<3
+feedparser>=6.0,<7
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
+sqlalchemy>=2.0,<3

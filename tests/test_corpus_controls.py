@@ -258,6 +258,33 @@ def test_try_upsert_skips_when_offline(monkeypatch):
     assert corpus_controls._try_upsert_to_store(pd.DataFrame({"a": [1]})) == (None, None)
 
 
+def test_load_corpus_force_refresh_skips_store(monkeypatch):
+    stored = pd.DataFrame({"source": ["NV"], "title": ["from-store"]})
+    stored.attrs["corpus_origin"] = "postgres"
+    monkeypatch.setattr(corpus_controls, "_try_load_from_store", lambda **_kwargs: stored)
+    live = pd.DataFrame({"source": ["NV"], "title": ["from-live"]})
+    monkeypatch.setattr(
+        corpus_controls,
+        "build_corpus_from_sources",
+        lambda **_kwargs: (live, []),
+    )
+    monkeypatch.setattr(corpus_controls, "_try_upsert_to_store", lambda _df: (1, None))
+
+    df, warnings = load_corpus_into_session(
+        ["NV"],
+        None,
+        None,
+        True,
+        "Новини",
+        load_articles_fn=lambda *_args, **_kwargs: pd.DataFrame(),
+        force_refresh=True,
+    )
+    assert warnings == []
+    assert df.iloc[0]["title"] == "from-live"
+    assert df.attrs["corpus_origin"] == "live"
+    assert df.attrs.get("corpus_force_refresh") is True
+
+
 def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):
     calls = {}
 
@@ -293,9 +320,11 @@ def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):
         "date_from",
         "date_to",
         "include_missing",
+        "force_refresh",
         "load_clicked",
     }
     assert result["sources"] == ["NV", "Українська правда"]
+    assert result["force_refresh"] is False
     assert calls["corpus_sources_ms"]["disabled"] is True
     assert set(calls) == {
         "corpus_all_category",
@@ -303,6 +332,7 @@ def test_render_corpus_sidebar_uses_stable_widget_keys(monkeypatch):
         "corpus_date_from",
         "corpus_date_to",
         "corpus_include_missing",
+        "corpus_force_rss",
         "corpus_load_btn",
     }
 

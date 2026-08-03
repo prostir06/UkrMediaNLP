@@ -210,8 +210,16 @@ def main() -> None:
         return
 
     try:
-        nlp_functions = NLP_FUNCTIONS_LIGHT if get_cloud_light() else NLP_FUNCTIONS_FULL
+        light_mode = get_cloud_light()
+        nlp_functions = NLP_FUNCTIONS_LIGHT if light_mode else NLP_FUNCTIONS_FULL
         selected_function = st.sidebar.selectbox("Функція", nlp_functions)
+        if light_mode:
+            st.sidebar.caption(
+                "Режим Light: RoBERTa / емоції вимкнені. "
+                "Для повного NLP задайте ALLOW_HEAVY_NLP=1."
+            )
+        else:
+            st.sidebar.caption("Режим Full NLP: доступні RoBERTa та аналіз емоцій.")
     except Exception as exc:
         logger.exception("NLP function select failed")
         st.error(f"Не вдалося показати функції NLP: {exc}")
@@ -249,6 +257,7 @@ def main() -> None:
                             include_missing=corpus_controls["include_missing"],
                             category=category,
                             load_articles_fn=load_articles,
+                            force_refresh=bool(corpus_controls.get("force_refresh")),
                         )
                     _commit_corpus_load(corpus_df, warnings, list(sources), category)
                 except Exception as exc:

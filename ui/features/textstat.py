@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from nlp_analysis import aggregate_corpus_metrics, get_textstat_metrics
+from nlp.textstat_ua import aggregate_corpus_metrics, get_textstat_metrics
 
 
 def render_text_stat(df: pd.DataFrame) -> None:

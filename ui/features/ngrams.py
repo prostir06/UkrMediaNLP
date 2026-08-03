@@ -5,13 +5,9 @@ import plotly.express as px
 import streamlit as st
 
 from config import NGRAM_DESCRIPTION, WORDCLOUD_DESCRIPTION
-from nlp_analysis import (
-    extract_keywords,
-    get_top_n_bigram,
-    get_top_n_trigram,
-    get_top_n_words,
-    render_wordclouds,
-)
+from nlp.keywords import extract_keywords
+from nlp.ngrams import get_top_n_bigram, get_top_n_trigram, get_top_n_words
+from ui.renderers import render_wordclouds
 
 
 def _render_ngram_table(

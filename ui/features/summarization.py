@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from config import MAX_SUMMARY_ARTICLES
-from nlp_analysis import run_text_summarization
+from ui.renderers import run_text_summarization
 from ui.widgets import sample_size_slider
 
 

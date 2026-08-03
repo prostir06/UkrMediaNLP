@@ -7,7 +7,7 @@ import streamlit as st
 
 from config import MAX_SENTIMENT_TITLES
 from nlp.news_sentiment import classify_news_sentiment_batch
-from nlp_analysis import plot_emotion_distribution, plot_sentiment_barchart
+from ui.renderers import plot_emotion_distribution, plot_sentiment_barchart
 from ui.widgets import sample_size_slider
 
 logger = logging.getLogger(__name__)

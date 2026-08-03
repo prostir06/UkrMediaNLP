@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from nlp.sentiment import _label_to_ua, _truncate
+from nlp.sentiment_constants import _label_to_ua, _truncate
 from nlp.summarization import lexrank_summarize, split_sentences
 from nlp.topics import run_topic_modeling
 

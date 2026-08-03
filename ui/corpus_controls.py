@@ -198,19 +198,27 @@ def load_corpus_into_session(
     category: str,
     load_articles_fn,
     progress_callback=None,
+    *,
+    force_refresh: bool = False,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Prefer Postgres store when configured; else live RSS, then upsert."""
-    stored = _try_load_from_store(
-        sources=sources,
-        date_from=date_from,
-        date_to=date_to,
-        include_missing=include_missing,
-        category=category,
-        max_rows=MAX_CORPUS_ARTICLES_TOTAL,
-    )
-    if stored is not None:
-        stored.attrs["category"] = category
-        return stored, []
+    """
+    Prefer Postgres store when configured; else live RSS, then upsert.
+
+    When ``force_refresh`` is True, skip the store read and always scrape live
+    (still upserts into the store when configured).
+    """
+    if not force_refresh:
+        stored = _try_load_from_store(
+            sources=sources,
+            date_from=date_from,
+            date_to=date_to,
+            include_missing=include_missing,
+            category=category,
+            max_rows=MAX_CORPUS_ARTICLES_TOTAL,
+        )
+        if stored is not None:
+            stored.attrs["category"] = category
+            return stored, []
 
     df, warnings = build_corpus_from_sources(
         sources=sources,
@@ -224,6 +232,8 @@ def load_corpus_into_session(
     )
     df.attrs["category"] = category
     df.attrs["corpus_origin"] = "live"
+    if force_refresh:
+        df.attrs["corpus_force_refresh"] = True
     upserted, upsert_error = _try_upsert_to_store(df)
     if upserted is not None:
         df.attrs["store_upserted"] = upserted
@@ -262,6 +272,12 @@ def render_corpus_sidebar(category: str) -> dict:
         value=True,
         key="corpus_include_missing",
     )
+    force_refresh = st.sidebar.checkbox(
+        "Примусово з RSS (ігнорувати store)",
+        value=False,
+        key="corpus_force_rss",
+        help="Завантажити свіжі статті з RSS навіть якщо Postgres уже має дані.",
+    )
     load_clicked = st.sidebar.button(
         "Завантажити / оновити корпус",
         key="corpus_load_btn",
@@ -273,5 +289,6 @@ def render_corpus_sidebar(category: str) -> dict:
         "date_from": date_from,
         "date_to": date_to,
         "include_missing": bool(include_missing),
+        "force_refresh": bool(force_refresh),
         "load_clicked": bool(load_clicked),
     }

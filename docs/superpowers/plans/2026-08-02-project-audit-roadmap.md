@@ -1,6 +1,9 @@
 # UkrMediaNLP Project Audit & Development Roadmap
 
-> **For agentic workers:** Use this as the parent roadmap. Each sprint below can become its own implementation plan via `writing-plans`. Do not implement everything in one PR.
+> **SUPERSEDED (2026-08-03):** See [`2026-08-03-post-s7-roadmap.md`](2026-08-03-post-s7-roadmap.md).  
+> This document describes the pre-S7 baseline (`app.py` ~873, cov 60%, open SSRF P0s). S1–S7 are complete; do not implement from this file.
+
+> **For agentic workers (historical):** Use this as the parent roadmap. Each sprint below can become its own implementation plan via `writing-plans`. Do not implement everything in one PR.
 
 **Goal:** Harden security, reduce architectural hotspots, mature the corpus feature from RSS snapshot MVP to durable analytics, and raise operational quality.
 

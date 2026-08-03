@@ -52,7 +52,11 @@ def build_source_trends_line(trends: pd.DataFrame):
             y=y_col,
             color="source",
             markers=True,
-            title="Порівняння медіа (одна тема)",
+            title=(
+                "Порівняння медіа — rate (hits / articles)"
+                if y_col == "rate"
+                else "Порівняння медіа (одна тема)"
+            ),
             labels={"bucket": "Дата", y_col: y_label, "source": "Медіа"},
         )
     except Exception as exc:

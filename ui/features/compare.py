@@ -5,10 +5,11 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from config import NEWS_SOURCES, source_category
 from exceptions import DataLoaderError
+from media_sources import NEWS_SOURCES, source_category
 from nlp.news_sentiment import classify_news_sentiment_batch
-from nlp_analysis import get_top_n_words, preprocess
+from nlp.ngrams import get_top_n_words
+from nlp.preprocessing import preprocess_texts as preprocess
 from ui.session_corpus import load_source
 
 logger = logging.getLogger(__name__)
