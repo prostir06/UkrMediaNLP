@@ -91,13 +91,13 @@ streamlit run streamlit_app.py
 ## Docker
 
 ```bash
-cp .env.example .env   # обов'язково: пароль Postgres лише з env
+# опційно: cp .env.example .env  (override local defaults)
 docker compose up --build
 ```
 
-Додаток: http://localhost:8501. Compose піднімає **Postgres 16** і передає `DATABASE_URL` у застосунок (durable corpus). Без `DATABASE_URL` локально — лише session-корпус як раніше.
+Додаток: http://localhost:8501. Compose піднімає **Postgres 16** і передає `DATABASE_URL` у застосунок (durable corpus). Без `DATABASE_URL` у самому процесі Python локально — лише session-корпус; у Docker є дефолт на сервіс `postgres`.
 
-**Secrets:** значення з `.env.example` (`ukrmedia` / `ukrmedia`) — лише для локальної розробки. У production задайте сильний `POSTGRES_PASSWORD` і відповідний `DATABASE_URL`; не публікуйте compose з дефолтним паролем як «готово до prod».
+**Secrets:** compose defaults / `.env.example` (`ukrmedia`) — лише local/CI. У production задайте сильний `POSTGRES_PASSWORD` і `DATABASE_URL`; не вважайте дефолти готовими до prod.
 
 Міграції схеми:
 
@@ -229,7 +229,7 @@ LIGHT_CLOUD = "1"
 | `ALLOW_HEAVY_NLP` | `0` | `1` = показати RoBERTa / емоції |
 | `ALLOW_EMBEDDINGS` | `0` | `1` = semantic embeddings (`nlp.embeddings`) |
 | `DATABASE_URL` | _(немає)_ | Postgres URL для durable corpus; без нього — лише session |
-| `POSTGRES_PASSWORD` | _(env)_ | Compose вимагає пароль з `.env` (див. `.env.example`; не для prod) |
+| `POSTGRES_PASSWORD` | `ukrmedia` (compose) | Local default; override via `.env` — не для prod |
 
 ## Обмеження
 

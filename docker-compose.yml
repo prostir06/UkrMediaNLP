@@ -1,3 +1,6 @@
+# Local / CI defaults match `.env.example`. Override via `.env` or shell for anything
+# beyond localhost. Production MUST set strong POSTGRES_PASSWORD + DATABASE_URL —
+# do not treat these defaults as prod-ready.
 services:
   postgres:
     image: postgres:16-alpine
@@ -5,8 +8,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ukrmedia}
-      # Password must come from env / `.env` (see `.env.example`). No silent prod default.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD — copy .env.example for local dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ukrmedia}
       POSTGRES_DB: ${POSTGRES_DB:-ukrmedia}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -37,7 +39,7 @@ services:
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
       - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
-      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -65,7 +67,7 @@ services:
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=1
       - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
-      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -94,7 +96,7 @@ services:
       - SPACY_MODEL=uk_core_news_md
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
       - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
-      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -111,7 +113,7 @@ services:
         PRELOAD_MODELS: "false"
     container_name: ukrmedia-nlp-ingest
     environment:
-      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
       - HF_HOME=/app/.cache/huggingface
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
