@@ -65,6 +65,9 @@ jobs:
       - name: Lint with ruff
         run: ruff check .
 
+      - name: Optional mypy (corpus_store + url_utils)
+        run: python -m mypy
+
   cloud-deps:
     runs-on: ubuntu-latest
     steps:
@@ -91,6 +94,11 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_USER: ukrmedia
+      POSTGRES_PASSWORD: ukrmedia
+      POSTGRES_DB: ukrmedia
+      DATABASE_URL: postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia
     steps:
       - uses: actions/checkout@v5
 

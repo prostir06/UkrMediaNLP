@@ -82,17 +82,26 @@ def summarize_articles(
 
     results: list[tuple[str, list[str]]] = []
     articles = df.head(max_articles)
+    contents = (
+        articles["content"].fillna("").astype(str).tolist()
+        if "content" in articles.columns
+        else [""] * len(articles)
+    )
+    titles = (
+        articles["title"].fillna("").astype(str).tolist()
+        if "title" in articles.columns
+        else ["Без заголовка"] * len(articles)
+    )
 
-    for _, row in articles.iterrows():
-        content = str(row.get("content", "") or "").strip()
-        if not content:
+    for title, content in zip(titles, contents, strict=False):
+        body = content.strip()
+        if not body:
             continue
         try:
-            summary = lexrank_summarize(content, sentence_count=sentence_count, nlp=nlp)
+            summary = lexrank_summarize(body, sentence_count=sentence_count, nlp=nlp)
             if not summary:
                 continue
-            title = str(row.get("title", "") or "Без заголовка")
-            results.append((title, summary))
+            results.append((title.strip() or "Без заголовка", summary))
         except NLPAnalysisError:
             raise
         except Exception as exc:

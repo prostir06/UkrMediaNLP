@@ -15,12 +15,10 @@ from config import (
     NLP_FUNCTIONS_FULL,
     NLP_FUNCTIONS_LIGHT,
     get_cloud_light,
-    get_source_config,
-    source_category,
-    sources_for_category,
 )
-from exceptions import DataLoaderError
-from nlp_analysis import preprocess
+from exceptions import DataLoaderError, NLPAnalysisError
+from media_sources import get_source_config, source_category, sources_for_category
+from nlp.preprocessing import preprocess_texts as preprocess
 from ui.corpus_controls import (
     CORPUS_FUNCTIONS,
     load_corpus_into_session,
@@ -65,10 +63,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _report_ui_error(label: str, exc: BaseException) -> None:
+    """Show a Streamlit error for typed domain exceptions."""
+    logger.warning("%s: %s", label, exc)
+    st.error(f"{label}: {exc}")
+
+
 def load_data(source_name: str, nlp_function: str) -> None:
     if nlp_function == "Пошук у корпусі":
         try:
             render_corpus_search()
+        except (DataLoaderError, NLPAnalysisError) as exc:
+            _report_ui_error("Пошук у корпусі не вдався", exc)
         except Exception as exc:
             logger.exception("Corpus search render failed")
             st.error(f"Пошук у корпусі не вдався: {exc}")
@@ -77,6 +83,8 @@ def load_data(source_name: str, nlp_function: str) -> None:
     if nlp_function == "Тренди тем":
         try:
             render_topic_trends()
+        except (DataLoaderError, NLPAnalysisError) as exc:
+            _report_ui_error("Не вдалося показати тренди тем", exc)
         except Exception as exc:
             logger.exception("Topic trends render failed")
             st.error(f"Не вдалося показати тренди тем: {exc}")
@@ -99,6 +107,8 @@ def load_data(source_name: str, nlp_function: str) -> None:
     if nlp_function == "Порівняння медіа":
         try:
             render_compare_media(source_name)
+        except (DataLoaderError, NLPAnalysisError) as exc:
+            _report_ui_error("Порівняння не вдалося", exc)
         except Exception as exc:
             logger.exception("Compare media failed")
             st.error(f"Порівняння не вдалося: {exc}")
@@ -152,6 +162,8 @@ def load_data(source_name: str, nlp_function: str) -> None:
             "На Streamlit Cloud free tier спробуйте n-грами, NER або LDA. "
             "Для transformers використовуйте Docker/VPS (2 GB+ RAM)."
         )
+    except (DataLoaderError, NLPAnalysisError) as exc:
+        _report_ui_error(f"Аналіз не вдався ({nlp_function})", exc)
     except Exception as exc:
         logger.exception("NLP function '%s' failed", nlp_function)
         st.error(f"Аналіз не вдався: {exc}")
@@ -260,6 +272,8 @@ def main() -> None:
                             force_refresh=bool(corpus_controls.get("force_refresh")),
                         )
                     _commit_corpus_load(corpus_df, warnings, list(sources), category)
+                except (DataLoaderError, NLPAnalysisError) as exc:
+                    _report_ui_error("Не вдалося завантажити корпус", exc)
                 except Exception as exc:
                     logger.exception("Corpus load failed")
                     st.error(f"Не вдалося завантажити корпус: {exc}")

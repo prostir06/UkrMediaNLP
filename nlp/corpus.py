@@ -130,6 +130,10 @@ def ensure_search_blobs(df: pd.DataFrame) -> pd.DataFrame:
     - ``search_blob_title``
     - ``search_blob_content`` (falls back to description when content empty)
     - ``search_blob`` (title + content)
+
+    When ``search_blob`` is already present and non-empty for every row
+    (e.g. loaded from durable store), title/content blobs are derived cheaply
+    and the persisted ``search_blob`` is kept.
     """
     if df is None or df.empty:
         return df.copy() if df is not None else pd.DataFrame()
@@ -159,6 +163,13 @@ def ensure_search_blobs(df: pd.DataFrame) -> pd.DataFrame:
     content_blob = content.where(content.str.strip().astype(bool), description)
     out["search_blob_title"] = title
     out["search_blob_content"] = content_blob
+
+    if "search_blob" in out.columns:
+        existing = out["search_blob"].fillna("").astype(str)
+        if bool(existing.str.strip().astype(bool).all()):
+            out["search_blob"] = existing.str.strip()
+            return out
+
     out["search_blob"] = (title + "\n" + content_blob).str.strip()
     return out
 

@@ -40,6 +40,8 @@ class Article(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     # Full article body for corpus search; may be empty string when scrape failed.
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Precomputed title+content blob so store loads skip ensure_search_blobs work.
+    search_blob: Mapped[str] = mapped_column(Text, nullable=False, default="")
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

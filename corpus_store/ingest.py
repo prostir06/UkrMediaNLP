@@ -17,7 +17,7 @@ import logging
 import subprocess
 import sys
 
-from config import MEDIA_CATEGORIES, NEWS_SOURCES, sources_for_category
+from media_sources import MEDIA_CATEGORIES, NEWS_SOURCES, sources_for_category
 from corpus_store.db import is_store_configured, session_scope
 from corpus_store.repository import RETENTION_DAYS, purge_older_than, upsert_articles
 from data_loader import fetch_articles

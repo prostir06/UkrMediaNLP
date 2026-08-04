@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      full:
+        description: "Run against all NEWS_SOURCES (live full)"
+        type: boolean
+        default: false
 
 jobs:
   scrape-smoke:
@@ -24,4 +29,6 @@ jobs:
       - name: Run scraper smoke test
         env:
           ARTICLE_CACHE: "0"
+          # Scheduled runs stay on the fixture subset; full live only via dispatch.
+          SCRAPER_HEALTH_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full && '1' || '0' }}
         run: python scripts/scraper_health_check.py

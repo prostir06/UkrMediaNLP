@@ -211,6 +211,8 @@ def test_upsert_dedupes_by_url_hash(session: Session):
     assert len(loaded) == 1
     assert loaded.iloc[0]["title"] == "One updated"
     assert loaded.iloc[0]["content"] == "body2"
+    assert "One updated" in str(loaded.iloc[0]["search_blob"])
+    assert "body2" in str(loaded.iloc[0]["search_blob"])
 
 
 def test_upsert_preserves_published_when_incoming_null(session: Session):

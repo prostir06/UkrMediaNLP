@@ -16,9 +16,10 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pandas as pd
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -41,7 +42,17 @@ _CORPUS_COLUMNS = [
     "content",
     "source",
     "scraped_ok",
+    "search_blob",
 ]
+
+
+def _build_search_blob(title: object, content: object, description: object = "") -> str:
+    """Build the same title+content blob used by ``nlp.corpus.ensure_search_blobs``."""
+    title_text = str(title or "").strip()
+    content_text = str(content or "").strip()
+    if not content_text:
+        content_text = str(description or "").strip()
+    return f"{title_text}\n{content_text}".strip()
 
 
 def canonical_url_hash(url: str) -> str:
@@ -104,14 +115,19 @@ def _row_to_article_dict(row: object, scraped_at: datetime) -> dict | None:
             return None
         digest = canonical_url_hash(url)
         title = str(get("title", "") or "").strip() or "(без заголовка)"
+        content = str(get("content", "") or "")
+        description = str(get("description", "") or "")
         published = _as_utc(get("published_dt", get("published")))
+        existing_blob = str(get("search_blob", "") or "").strip()
         return {
             "url_hash": digest,
             "url": url,
             "source": str(get("source", "") or ""),
             "category": str(get("category", "") or ""),
             "title": title,
-            "content": str(get("content", "") or ""),
+            "content": content,
+            "search_blob": existing_blob
+            or _build_search_blob(title, content, description),
             "published_at": published,
             "scraped_at": scraped_at,
             "scraped_ok": bool(get("scraped_ok", False)),
@@ -178,6 +194,7 @@ def upsert_articles(session: Session, df: pd.DataFrame) -> int:
             "category": stmt.excluded.category,
             "title": stmt.excluded.title,
             "content": stmt.excluded.content,
+            "search_blob": stmt.excluded.search_blob,
             "scraped_at": stmt.excluded.scraped_at,
             "scraped_ok": stmt.excluded.scraped_ok,
             # Keep previous publish time when the new scrape has no date.
@@ -223,7 +240,7 @@ def load_corpus_from_store(
         (bad filters). SQLAlchemy errors propagate to the caller.
     """
     empty = pd.DataFrame(columns=_CORPUS_COLUMNS)
-    clauses = []
+    clauses: list[Any] = []
     try:
         if sources:
             clauses.append(Article.source.in_(list(sources)))
@@ -233,13 +250,13 @@ def load_corpus_from_store(
         start = _as_utc(date_from) if date_from is not None else None
         end = _as_utc(date_to) if date_to is not None else None
         if start is not None or end is not None:
-            date_ok = []
+            date_ok: list[Any] = []
             if start is not None:
                 date_ok.append(Article.published_at >= start)
             if end is not None:
                 # Inclusive calendar day: keep everything before next midnight.
                 date_ok.append(Article.published_at < end + timedelta(days=1))
-            in_range = and_(*date_ok) if date_ok else True
+            in_range = and_(*date_ok) if date_ok else true()
             if include_missing_dates:
                 clauses.append(or_(Article.published_at.is_(None), in_range))
             else:
@@ -264,6 +281,9 @@ def load_corpus_from_store(
     for article in articles:
         try:
             published = article.published_at
+            blob = getattr(article, "search_blob", None) or ""
+            if not str(blob).strip():
+                blob = _build_search_blob(article.title, article.content or "")
             records.append(
                 {
                     "title": article.title,
@@ -274,6 +294,7 @@ def load_corpus_from_store(
                     "content": article.content or "",
                     "source": article.source,
                     "scraped_ok": bool(article.scraped_ok),
+                    "search_blob": str(blob),
                 }
             )
         except Exception as exc:
@@ -309,9 +330,9 @@ def purge_older_than(
         cutoff = moment - timedelta(days=days)
         effective = func.coalesce(Article.published_at, Article.scraped_at)
         result = session.execute(
-            Article.__table__.delete().where(effective < cutoff)
+            delete(Article).where(effective < cutoff)
         )
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
     except SQLAlchemyError:
         logger.exception("purge_older_than: delete failed (days=%s)", days)
         raise

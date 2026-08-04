@@ -1,8 +1,8 @@
 """
-NLP analysis facade — pure compute re-exports only (no Streamlit / UI).
+Deprecated NLP façade — prefer ``from nlp.<module> import ...``.
 
-UI plotting lives in ``ui.renderers``; feature screens import renderers
-directly. Prefer ``from nlp.<module> import ...`` for new code.
+Kept for backward-compatible imports in older scripts/tests. New code must
+not import from here. Streamlit-free (no ``ui``).
 """
 
 from nlp.keywords import extract_keywords

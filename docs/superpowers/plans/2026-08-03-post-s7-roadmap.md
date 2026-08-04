@@ -1,10 +1,13 @@
 # UkrMediaNLP — аудит і roadmap після S7
 
+> **COMPLETED (S8–S11):** Force-refresh, Postgres CI, façades/UX/coverage — see [`2026-08-04-post-s11-roadmap.md`](2026-08-04-post-s11-roadmap.md) for S12+.
+
 > **For agentic workers:** Parent roadmap after S1–S7. Each sprint (S8+) should get its own `writing-plans` plan. Do not implement everything in one PR.
 
 **Дата:** 2026-08-03 · **База:** `main` (S7 durable corpus) · **Фокус:** збалансований — Reliability → Architecture → Perf/UX → Ops
 
 **Supersedes:** [`2026-08-02-project-audit-roadmap.md`](2026-08-02-project-audit-roadmap.md) (описував до-S7 стан: `app.py` ~873, cov 60%, відкриті P0 SSRF).
+**Next roadmap:** [`2026-08-04-post-s11-roadmap.md`](2026-08-04-post-s11-roadmap.md).
 
 **Goal:** Закрити P0 свіжості корпусу й надійності store CI/Docker; прибрати architectural façades; підняти perf/UX і ops-сигнали.
 

@@ -254,6 +254,22 @@ def test_ensure_search_blobs_idempotent():
     assert twice is once
 
 
+def test_ensure_search_blobs_keeps_persisted_blob():
+    from nlp.corpus import ensure_search_blobs
+
+    df = pd.DataFrame(
+        {
+            "title": ["Титул"],
+            "content": ["Тіло"],
+            "search_blob": ["persisted blob value"],
+        }
+    )
+    out = ensure_search_blobs(df)
+    assert out["search_blob"].iloc[0] == "persisted blob value"
+    assert out["search_blob_title"].iloc[0] == "Титул"
+    assert out["search_blob_content"].iloc[0] == "Тіло"
+
+
 def test_search_corpus_vectorized_perf_guard():
     """Regression guard: 2k rows should search quickly without iterrows cost."""
     import time

@@ -16,7 +16,7 @@ import socket
 from functools import lru_cache
 from urllib.parse import urlparse
 
-from config import NEWS_SOURCES
+from media_sources import NEWS_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,8 @@ def _resolve_host_is_public(hostname: str) -> bool:
             type=socket.SOCK_STREAM,
         ):
             if family in (socket.AF_INET, socket.AF_INET6):
-                if _is_private_ip(sockaddr[0]):
+                host_ip = sockaddr[0]
+                if isinstance(host_ip, str) and _is_private_ip(host_ip):
                     return False
     except socket.gaierror as exc:
         logger.warning("DNS resolution failed for %s: %s", hostname, exc)

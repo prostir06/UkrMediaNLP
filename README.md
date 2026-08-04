@@ -47,15 +47,16 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── scraping.py             # HTTP-скрейпінг
 ├── scrapers/               # Site-specific + JSON-LD парсери
 ├── nlp/                    # NLP-модулі (без Streamlit)
-├── nlp_analysis.py         # Фасад для UI
+├── nlp_analysis.py         # Deprecated re-export façade (prefer nlp.*)
 ├── data/stopwords_uk.txt   # Українські стоп-слова
 ├── requirements.txt        # Повний NLP (CPU torch) + Postgres driver
 ├── requirements-cloud.txt  # Light Cloud (без torch; sqlalchemy optional)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
+├── .env.example            # Local compose secrets template (not for prod)
 ├── tests/                  # pytest (~310 тестів)
 ├── Dockerfile
-└── docker-compose.yml      # app + Postgres 16 (+ profiles)
+└── docker-compose.yml      # app + Postgres 16 (+ profiles; password from env)
 ```
 
 ## Встановлення (локально)
@@ -90,10 +91,13 @@ streamlit run streamlit_app.py
 ## Docker
 
 ```bash
+cp .env.example .env   # обов'язково: пароль Postgres лише з env
 docker compose up --build
 ```
 
 Додаток: http://localhost:8501. Compose піднімає **Postgres 16** і передає `DATABASE_URL` у застосунок (durable corpus). Без `DATABASE_URL` локально — лише session-корпус як раніше.
+
+**Secrets:** значення з `.env.example` (`ukrmedia` / `ukrmedia`) — лише для локальної розробки. У production задайте сильний `POSTGRES_PASSWORD` і відповідний `DATABASE_URL`; не публікуйте compose з дефолтним паролем як «готово до prod».
 
 Міграції схеми:
 
@@ -223,7 +227,9 @@ LIGHT_CLOUD = "1"
 | `ARTICLE_CACHE_TTL` | 12h | TTL SQLite-кешу статей |
 | `SPACY_MODEL` | `uk_core_news_sm` | spaCy pipeline |
 | `ALLOW_HEAVY_NLP` | `0` | `1` = показати RoBERTa / емоції |
+| `ALLOW_EMBEDDINGS` | `0` | `1` = semantic embeddings (`nlp.embeddings`) |
 | `DATABASE_URL` | _(немає)_ | Postgres URL для durable corpus; без нього — лише session |
+| `POSTGRES_PASSWORD` | _(env)_ | Compose вимагає пароль з `.env` (див. `.env.example`; не для prod) |
 
 ## Обмеження
 

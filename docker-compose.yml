@@ -5,14 +5,15 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ukrmedia}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ukrmedia}
+      # Password must come from env / `.env` (see `.env.example`). No silent prod default.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD — copy .env.example for local dev}
       POSTGRES_DB: ${POSTGRES_DB:-ukrmedia}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ukrmedia} -d ${POSTGRES_DB:-ukrmedia}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -35,7 +36,8 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
+      - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -62,7 +64,8 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm
       - ALLOW_HEAVY_NLP=1
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
+      - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -90,7 +93,8 @@ services:
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_md
       - ALLOW_HEAVY_NLP=${ALLOW_HEAVY_NLP:-0}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
+      - ALLOW_EMBEDDINGS=${ALLOW_EMBEDDINGS:-0}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
     volumes:
       - hf_cache:/app/.cache/huggingface
       - article_cache:/app/.cache/articles
@@ -107,7 +111,7 @@ services:
         PRELOAD_MODELS: "false"
     container_name: ukrmedia-nlp-ingest
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://ukrmedia:ukrmedia@postgres:5432/ukrmedia}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL — copy .env.example for local dev}
       - HF_HOME=/app/.cache/huggingface
       - ARTICLE_CACHE_DIR=/app/.cache/articles
       - SPACY_MODEL=uk_core_news_sm

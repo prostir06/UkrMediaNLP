@@ -41,8 +41,10 @@ def render_snapshot(df: pd.DataFrame) -> None:
     col3.metric("Успішність скрейпінгу", f"{scraped / total:.0%}" if total else "—")
 
     with st.expander("Посилання на статті"):
-        for _, row in df.iterrows():
-            st.markdown(f"- [{row['title']}]({row['link']})")
+        titles = df["title"].fillna("").astype(str).tolist()
+        links = df["link"].fillna("").astype(str).tolist()
+        for title, link in zip(titles, links, strict=False):
+            st.markdown(f"- [{title}]({link})")
 
     csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(

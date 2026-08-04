@@ -18,6 +18,7 @@ def test_nlp_modules_import_without_streamlit_session():
         "nlp.wordcloud_render",
         "nlp.ngrams",
         "nlp.news_sentiment",
+        "nlp.embeddings",
         "media_sources",
         "nlp_analysis",
     ]
@@ -37,3 +38,10 @@ def test_nlp_analysis_facade_has_no_ui_imports():
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
             assert not module.startswith("ui"), module
+
+
+def test_app_does_not_import_nlp_analysis_facade():
+    tree = ast.parse(Path("app.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "nlp_analysis":
+            raise AssertionError("app.py must not import nlp_analysis")
