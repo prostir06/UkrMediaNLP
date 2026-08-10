@@ -316,6 +316,45 @@ def search_corpus(
         ) from exc
 
 
+def search_corpus_semantic(
+    df: pd.DataFrame,
+    query: str,
+    *,
+    min_score: float = 0.0,
+    top_k: int = 50,
+    text_column: str = "search_blob",
+) -> pd.DataFrame:
+    """Rank rows by embedding cosine similarity to *query*."""
+    q = (query or "").strip()
+    if not q or df.empty:
+        return df.iloc[0:0].copy()
+    try:
+        from nlp.embeddings import cosine_similarity, embed_texts
+
+        work = ensure_search_blobs(ensure_published_dt(df))
+        blob_col = text_column if text_column in work.columns else "search_blob"
+        texts = work[blob_col].fillna("").astype(str).tolist()
+        vectors = embed_texts([q, *texts])
+        query_vec = vectors[0]
+        scores = [cosine_similarity(query_vec, doc_vec) for doc_vec in vectors[1:]]
+        out = work.copy()
+        out["relevance"] = scores
+        out = out.loc[out["relevance"] >= min_score]
+        out = out.sort_values("relevance", ascending=False).head(top_k)
+        out["snippet"] = [
+            make_snippet(str(text), q) for text in out[blob_col].fillna("").astype(str)
+        ]
+        return out.reset_index(drop=True)
+    except NLPAnalysisError:
+        raise
+    except Exception as exc:
+        logger.exception("search_corpus_semantic failed: %s", exc)
+        raise NLPAnalysisError(
+            f"Семантичний пошук не вдався: {exc}",
+            step="search_corpus_semantic",
+        ) from exc
+
+
 def parse_manual_terms(text: str) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []

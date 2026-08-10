@@ -78,7 +78,7 @@ def test_render_corpus_search_direct(mock_st, monkeypatch):
     )
     mock_st.session_state["corpus_df"] = corpus
     mock_st.text_input.return_value = "Київ"
-    mock_st.radio.return_value = "Заголовках і текстах"
+    mock_st.radio.side_effect = ["Ключові слова", "Заголовках і текстах"]
     mock_st.checkbox.return_value = False
     monkeypatch.setattr(
         corpus_search,
@@ -88,6 +88,46 @@ def test_render_corpus_search_direct(mock_st, monkeypatch):
     monkeypatch.setattr(corpus_search, "build_source_hit_bar", lambda *a, **k: MagicMock())
     corpus_search.render_corpus_search()
     mock_st.subheader.assert_called()
+
+
+def test_render_corpus_search_semantic_mode(mock_st, monkeypatch):
+    corpus = pd.DataFrame(
+        {
+            "title": ["Київ новини"],
+            "content": ["Текст про Київ"],
+            "source": ["NV"],
+            "published": ["2024-01-01"],
+        }
+    )
+    mock_st.session_state["corpus_df"] = corpus
+    mock_st.text_input.return_value = "Київ"
+    mock_st.radio.return_value = "Семантичний"
+    monkeypatch.setattr(corpus_search, "embeddings_enabled", lambda: True)
+    monkeypatch.setattr(
+        corpus_search,
+        "search_corpus_semantic",
+        lambda *a, **k: corpus.assign(snippet=["…Київ…"], relevance=[0.9]),
+    )
+    monkeypatch.setattr(corpus_search, "build_source_hit_bar", lambda *a, **k: MagicMock())
+    corpus_search.render_corpus_search()
+    mock_st.subheader.assert_called()
+
+
+def test_render_corpus_search_semantic_disabled_shows_info(mock_st, monkeypatch):
+    corpus = pd.DataFrame(
+        {
+            "title": ["Київ"],
+            "content": ["текст"],
+            "source": ["NV"],
+            "published": ["2024-01-01"],
+        }
+    )
+    mock_st.session_state["corpus_df"] = corpus
+    mock_st.text_input.return_value = "Київ"
+    mock_st.radio.return_value = "Семантичний"
+    monkeypatch.setattr(corpus_search, "embeddings_enabled", lambda: False)
+    corpus_search.render_corpus_search()
+    mock_st.info.assert_called()
 
 
 def test_render_topic_trends_direct(mock_st, monkeypatch):

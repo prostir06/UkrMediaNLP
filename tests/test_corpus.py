@@ -293,3 +293,32 @@ def test_search_corpus_vectorized_perf_guard():
     assert len(hits) == sum(1 for i in range(n) if i % 17 == 0)
     # Generous CI budget; vectorized path is typically well under 1s.
     assert elapsed < 2.5, f"search too slow: {elapsed:.3f}s"
+
+
+def test_search_corpus_semantic_ranks_similar_higher(monkeypatch):
+    monkeypatch.setenv("ALLOW_EMBEDDINGS", "1")
+    from nlp.corpus import search_corpus_semantic
+
+    df = pd.DataFrame(
+        {
+            "title": ["Київ футбол", "Біржові котирування", "футбол у Києві"],
+            "content": ["", "", ""],
+            "source": ["A", "B", "C"],
+            "published": ["2024-01-01"] * 3,
+        }
+    )
+    out = search_corpus_semantic(df, "Київ футбол", min_score=0.0, top_k=3)
+    assert len(out) >= 2
+    titles = out["title"].tolist()
+    assert titles[0] in {"Київ футбол", "футбол у Києві"}
+    assert "Біржові котирування" not in titles[:1]
+
+
+def test_search_corpus_semantic_disabled_raises(monkeypatch):
+    monkeypatch.delenv("ALLOW_EMBEDDINGS", raising=False)
+    from exceptions import NLPAnalysisError
+    from nlp.corpus import search_corpus_semantic
+
+    df = pd.DataFrame({"title": ["x"], "content": [""], "source": ["A"], "published": [""]})
+    with pytest.raises(NLPAnalysisError, match="вимкнені"):
+        search_corpus_semantic(df, "x")

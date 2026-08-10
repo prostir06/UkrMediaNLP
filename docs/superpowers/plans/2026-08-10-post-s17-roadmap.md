@@ -57,7 +57,7 @@
 | Sprint | Status | Notes |
 |--------|--------|-------|
 | S1–S17 | Done | See post-S11 roadmap |
-| S18 Semantic search UI | Planned | [`2026-08-10-semantic-search-s18.md`](2026-08-10-semantic-search-s18.md) |
+| S18 Semantic search UI | Done | keyword + semantic toggle; `search_corpus_semantic` |
 | S19 Import hygiene | Planned | |
 | S20 Typed errors (core) | Planned | |
 | S21 Scheduled ingest | Planned | |

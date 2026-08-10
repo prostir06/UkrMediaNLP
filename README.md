@@ -17,7 +17,7 @@ Streamlit-додаток для збору новин з RSS українськ�
   - статистика тексту, NER, POS, LDA, сумаризація
   - тональність (новини) — завжди; RoBERTa / емоції — лише з `ALLOW_HEAVY_NLP=1`
   - порівняння медіа в межах категорії
-- **Пошук у корпусі** — ключові слова/фрази по кількох медіа категорії
+- **Пошук у корпусі** — ключові слова/фрази або семантичний режим (`ALLOW_EMBEDDINGS=1`) по кількох медіа категорії
 - **Тренди тем** — гібридні теми (авто + ручні) і порівняння медіа на графіку
 - **Durable corpus (опційно)** — Postgres upsert / 90 днів retention / ingest CLI (`DATABASE_URL`)
 
@@ -227,7 +227,7 @@ LIGHT_CLOUD = "1"
 | `ARTICLE_CACHE_TTL` | 12h | TTL SQLite-кешу статей |
 | `SPACY_MODEL` | `uk_core_news_sm` | spaCy pipeline |
 | `ALLOW_HEAVY_NLP` | `0` | `1` = показати RoBERTa / емоції |
-| `ALLOW_EMBEDDINGS` | `0` | `1` = semantic embeddings (`nlp.embeddings`) |
+| `ALLOW_EMBEDDINGS` | `0` | `1` = semantic search mode in corpus UI (`nlp.embeddings`) |
 | `DATABASE_URL` | _(немає)_ | Postgres URL для durable corpus; без нього — лише session |
 | `POSTGRES_PASSWORD` | `ukrmedia` (compose) | Local default; override via `.env` — не для prod |
 
