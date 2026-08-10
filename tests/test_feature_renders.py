@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from exceptions import NLPAnalysisError
 from ui.features import compare, corpus_search, corpus_trends, ner, ngrams, pos, textstat, topics
 
 ST_TARGETS = (
@@ -128,6 +129,74 @@ def test_render_corpus_search_semantic_disabled_shows_info(mock_st, monkeypatch)
     monkeypatch.setattr(corpus_search, "embeddings_enabled", lambda: False)
     corpus_search.render_corpus_search()
     mock_st.info.assert_called()
+
+
+def test_render_corpus_search_shows_nlp_error(mock_st, monkeypatch):
+    corpus = pd.DataFrame(
+        {
+            "title": ["Київ"],
+            "content": ["текст"],
+            "source": ["NV"],
+            "published": ["2024-01-01"],
+        }
+    )
+    mock_st.session_state["corpus_df"] = corpus
+    mock_st.text_input.return_value = "Київ"
+    mock_st.radio.side_effect = ["Ключові слова", "Заголовках і текстах"]
+    mock_st.checkbox.return_value = False
+
+    def boom(*_a, **_k):
+        raise NLPAnalysisError("тестова помилка", step="search")
+
+    monkeypatch.setattr(corpus_search, "search_corpus", boom)
+    corpus_search.render_corpus_search()
+    mock_st.error.assert_called()
+
+
+def test_run_search_semantic_delegates(monkeypatch):
+    from ui.features import corpus_search as cs
+
+    sample_df = pd.DataFrame({"title": ["a"], "content": [""], "source": ["A"], "published": [""]})
+    called = {}
+
+    def fake_semantic(df, query, **kwargs):
+        called["query"] = query
+        called["kwargs"] = kwargs
+        return df.iloc[0:0]
+
+    monkeypatch.setattr(cs, "search_corpus_semantic", fake_semantic)
+    cs._run_search(
+        sample_df,
+        "запит",
+        semantic_mode=True,
+        field_mode="",
+        whole_word=False,
+        use_lemmas=False,
+    )
+    assert called["query"] == "запит"
+    assert called["kwargs"]["min_score"] == cs._SEMANTIC_MIN_SCORE
+
+
+def test_run_search_keyword_delegates(monkeypatch):
+    from ui.features import corpus_search as cs
+
+    sample_df = pd.DataFrame({"title": ["a"], "content": [""], "source": ["A"], "published": [""]})
+    called = {}
+
+    def fake_keyword(*_a, **kwargs):
+        called["fields"] = kwargs.get("fields")
+        return sample_df.iloc[0:0]
+
+    monkeypatch.setattr(cs, "search_corpus", fake_keyword)
+    cs._run_search(
+        sample_df,
+        "запит",
+        semantic_mode=False,
+        field_mode="Лише заголовках",
+        whole_word=True,
+        use_lemmas=False,
+    )
+    assert called["fields"] == ("title",)
 
 
 def test_render_topic_trends_direct(mock_st, monkeypatch):

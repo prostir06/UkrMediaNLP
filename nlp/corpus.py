@@ -324,35 +324,113 @@ def search_corpus_semantic(
     top_k: int = 50,
     text_column: str = "search_blob",
 ) -> pd.DataFrame:
-    """Rank rows by embedding cosine similarity to *query*."""
+    """
+    Rank corpus rows by embedding cosine similarity to *query*.
+
+    Uses ``nlp.embeddings`` (hash encoder when ``ALLOW_EMBEDDINGS=1``). Unlike
+    ``search_corpus``, this returns all rows above *min_score* (not substring
+    matches), sorted by descending similarity.
+
+    Args:
+        df: Loaded corpus frame (may lack precomputed blobs — they are built).
+        query: Free-text query; empty/whitespace returns an empty frame.
+        min_score: Minimum cosine similarity in ``[0, 1]`` to keep a row.
+        top_k: Maximum rows returned after filtering and sorting.
+        text_column: Column used for document text; falls back to ``search_blob``.
+
+    Returns:
+        Frame copy with ``relevance`` (float similarity) and ``snippet`` columns.
+
+    Raises:
+        NLPAnalysisError: When embeddings are disabled, parameters invalid, or
+            encoding/ranking fails unexpectedly.
+    """
     q = (query or "").strip()
-    if not q or df.empty:
-        return df.iloc[0:0].copy()
+    if not q:
+        return _empty_corpus_result(df)
+    if df is None or df.empty:
+        return _empty_corpus_result(df)
+
+    score_floor, row_limit = _parse_semantic_search_params(min_score, top_k)
+
     try:
         from nlp.embeddings import cosine_similarity, embed_texts
 
         work = ensure_search_blobs(ensure_published_dt(df))
-        blob_col = text_column if text_column in work.columns else "search_blob"
+        blob_col = _resolve_semantic_text_column(work, text_column)
         texts = work[blob_col].fillna("").astype(str).tolist()
+
         vectors = embed_texts([q, *texts])
+        if len(vectors) != len(texts) + 1:
+            raise NLPAnalysisError(
+                f"Невідповідність розміру embeddings: {len(vectors)} vs {len(texts) + 1}",
+                step="search_corpus_semantic",
+            )
+
         query_vec = vectors[0]
         scores = [cosine_similarity(query_vec, doc_vec) for doc_vec in vectors[1:]]
+
         out = work.copy()
         out["relevance"] = scores
-        out = out.loc[out["relevance"] >= min_score]
-        out = out.sort_values("relevance", ascending=False).head(top_k)
+        out = out.loc[out["relevance"] >= score_floor]
+        out = out.sort_values("relevance", ascending=False).head(row_limit)
         out["snippet"] = [
             make_snippet(str(text), q) for text in out[blob_col].fillna("").astype(str)
         ]
         return out.reset_index(drop=True)
     except NLPAnalysisError:
         raise
+    except (TypeError, ValueError, KeyError) as exc:
+        logger.warning("search_corpus_semantic validation failed: %s", exc)
+        raise NLPAnalysisError(
+            f"Семантичний пошук: некоректні дані: {exc}",
+            step="search_corpus_semantic",
+        ) from exc
     except Exception as exc:
         logger.exception("search_corpus_semantic failed: %s", exc)
         raise NLPAnalysisError(
             f"Семантичний пошук не вдався: {exc}",
             step="search_corpus_semantic",
         ) from exc
+
+
+def _empty_corpus_result(df: pd.DataFrame | None) -> pd.DataFrame:
+    """Return an empty result frame preserving corpus columns when possible."""
+    if df is None or not isinstance(df, pd.DataFrame):
+        return pd.DataFrame()
+    return df.iloc[0:0].copy()
+
+
+def _parse_semantic_search_params(min_score: object, top_k: object) -> tuple[float, int]:
+    """Validate semantic search tuning knobs; raise ``NLPAnalysisError`` on bad input."""
+    try:
+        score = float(min_score)  # type: ignore[arg-type]
+        limit = int(top_k)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise NLPAnalysisError(
+            f"min_score/top_k мають бути числами: {exc}",
+            step="search_corpus_semantic",
+        ) from exc
+    if limit <= 0:
+        raise NLPAnalysisError("top_k must be positive", step="search_corpus_semantic")
+    if score < 0.0 or score > 1.0:
+        raise NLPAnalysisError(
+            "min_score має бути в діапазоні [0, 1]",
+            step="search_corpus_semantic",
+        )
+    return score, limit
+
+
+def _resolve_semantic_text_column(work: pd.DataFrame, text_column: str) -> str:
+    """Pick the blob column used for semantic document vectors."""
+    if text_column in work.columns:
+        return text_column
+    if "search_blob" in work.columns:
+        return "search_blob"
+    raise NLPAnalysisError(
+        f"Колонка для семантичного пошуку відсутня: {text_column!r}",
+        step="search_corpus_semantic",
+    )
 
 
 def parse_manual_terms(text: str) -> list[str]:
