@@ -30,7 +30,9 @@
 | S14 UI test depth | Done |
 | S15 Corpus compute persistence | Done |
 | S16 Ops readiness | Done |
-| S17 Embeddings / semantic search | Done (hash fallback; ALLOW_EMBEDDINGS=0 default) |
+| S17 Embeddings / semantic search | Done (module; UI in S18) |
+
+**Next roadmap:** [`2026-08-10-post-s17-roadmap.md`](2026-08-10-post-s17-roadmap.md) (S18+).
 
 ## Sprint roadmap S12–S17
 
