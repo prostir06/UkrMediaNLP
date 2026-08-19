@@ -102,7 +102,7 @@ def test_article_columns_schema():
 
 
 def test_get_cloud_light_reads_env(monkeypatch):
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.setenv("LIGHT_CLOUD", "1")
     monkeypatch.setenv("ALLOW_HEAVY_NLP", "1")
@@ -110,20 +110,20 @@ def test_get_cloud_light_reads_env(monkeypatch):
 
 
 def test_get_cloud_light_default_stable_without_allow(monkeypatch):
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.delenv("LIGHT_CLOUD", raising=False)
     monkeypatch.delenv("ALLOW_HEAVY_NLP", raising=False)
-    monkeypatch.setattr("config._transformers_available", lambda: True)
+    monkeypatch.setattr("runtime_env._transformers_available", lambda: True)
     assert get_cloud_light() is True
 
 
 def test_get_cloud_light_full_when_allow_heavy(monkeypatch):
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.delenv("LIGHT_CLOUD", raising=False)
     monkeypatch.setenv("ALLOW_HEAVY_NLP", "1")
-    monkeypatch.setattr("config._transformers_available", lambda: True)
+    monkeypatch.setattr("runtime_env._transformers_available", lambda: True)
     assert get_cloud_light() is False
 
 
@@ -131,7 +131,7 @@ def test_get_cloud_light_reads_secrets(monkeypatch):
     import sys
     import types
 
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.delenv("LIGHT_CLOUD", raising=False)
     monkeypatch.setenv("ALLOW_HEAVY_NLP", "1")
@@ -139,16 +139,16 @@ def test_get_cloud_light_reads_secrets(monkeypatch):
     fake_st = types.ModuleType("streamlit")
     fake_st.secrets = {"LIGHT_CLOUD": "true"}
     monkeypatch.setitem(sys.modules, "streamlit", fake_st)
-    monkeypatch.setattr("config._transformers_available", lambda: True)
+    monkeypatch.setattr("runtime_env._transformers_available", lambda: True)
     assert get_cloud_light() is True
 
 
 def test_get_cloud_light_when_transformers_missing(monkeypatch):
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.delenv("LIGHT_CLOUD", raising=False)
     monkeypatch.setenv("ALLOW_HEAVY_NLP", "1")
-    monkeypatch.setattr("config._transformers_available", lambda: False)
+    monkeypatch.setattr("runtime_env._transformers_available", lambda: False)
     assert get_cloud_light() is True
 
 
@@ -156,11 +156,11 @@ def test_get_cloud_light_secrets_exception_keeps_env_allow(monkeypatch):
     import sys
     import types
 
-    from config import get_cloud_light
+    from runtime_env import get_cloud_light
 
     monkeypatch.delenv("LIGHT_CLOUD", raising=False)
     monkeypatch.setenv("ALLOW_HEAVY_NLP", "1")
-    monkeypatch.setattr("config._transformers_available", lambda: True)
+    monkeypatch.setattr("runtime_env._transformers_available", lambda: True)
 
     fake_st = types.ModuleType("streamlit")
 

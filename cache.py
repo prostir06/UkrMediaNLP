@@ -9,9 +9,9 @@ import logging
 
 import streamlit as st
 
-from config import get_source_config
 from data_loader import fetch_articles
 from exceptions import DataLoaderError, NLPAnalysisError
+from media_sources import get_source_config
 
 logger = logging.getLogger(__name__)
 

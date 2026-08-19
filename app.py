@@ -10,15 +10,11 @@ import logging
 import streamlit as st
 
 from cache import load_articles
-from config import (
-    MEDIA_CATEGORIES,
-    NLP_FUNCTIONS_FULL,
-    NLP_FUNCTIONS_LIGHT,
-    get_cloud_light,
-)
+from config import MEDIA_CATEGORIES, NLP_FUNCTIONS_FULL, NLP_FUNCTIONS_LIGHT
 from exceptions import DataLoaderError, NLPAnalysisError
 from media_sources import get_source_config, source_category, sources_for_category
 from nlp.preprocessing import preprocess_texts as preprocess
+from runtime_env import get_cloud_light
 from ui.corpus_controls import (
     CORPUS_FUNCTIONS,
     load_corpus_into_session,

@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from config import MAX_TREND_TERMS, get_cloud_light
+from config import MAX_TREND_TERMS
 from nlp.corpus import (
     aggregate_trends,
     aggregate_trends_by_source,
@@ -13,6 +13,7 @@ from nlp.corpus import (
     suggest_lda_labels,
     suggest_terms,
 )
+from runtime_env import get_cloud_light
 from ui.corpus_charts import build_source_trends_line, build_trends_line
 
 logger = logging.getLogger(__name__)

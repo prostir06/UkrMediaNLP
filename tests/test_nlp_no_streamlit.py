@@ -5,6 +5,20 @@ import importlib
 from pathlib import Path
 
 
+def _module_imports_streamlit(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "streamlit" or alias.name.startswith("streamlit."):
+                    return True
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "streamlit" or module.startswith("streamlit."):
+                return True
+    return False
+
+
 def test_nlp_modules_import_without_streamlit_session():
     modules = [
         "nlp.sentiment",
@@ -20,7 +34,7 @@ def test_nlp_modules_import_without_streamlit_session():
         "nlp.news_sentiment",
         "nlp.embeddings",
         "media_sources",
-        "nlp_analysis",
+        "config",
     ]
     for name in modules:
         mod = importlib.import_module(name)
@@ -29,15 +43,12 @@ def test_nlp_modules_import_without_streamlit_session():
         assert "from streamlit" not in source
 
 
-def test_nlp_analysis_facade_has_no_ui_imports():
-    tree = ast.parse(Path("nlp_analysis.py").read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert not alias.name.startswith("ui"), alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            assert not module.startswith("ui"), module
+def test_config_source_has_no_streamlit_import():
+    assert not _module_imports_streamlit(Path("config.py"))
+
+
+def test_nlp_analysis_file_absent():
+    assert not Path("nlp_analysis.py").exists()
 
 
 def test_app_does_not_import_nlp_analysis_facade():
@@ -45,3 +56,7 @@ def test_app_does_not_import_nlp_analysis_facade():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "nlp_analysis":
             raise AssertionError("app.py must not import nlp_analysis")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "nlp_analysis":
+                    raise AssertionError("app.py must not import nlp_analysis")

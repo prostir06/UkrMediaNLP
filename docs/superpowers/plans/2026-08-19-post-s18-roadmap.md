@@ -82,7 +82,7 @@ flowchart TD
 |--------|--------|-------|
 | S1–S17 | Done | post-S11 / post-S17 docs |
 | S18 Semantic search UI | Done | `search_corpus_semantic` + UI toggle + tests |
-| S19 Import hygiene | Planned | [`2026-08-19-import-hygiene-s19.md`](2026-08-19-import-hygiene-s19.md) |
+| S19 Import hygiene | Done | `get_cloud_light` in `runtime_env`; `nlp_analysis.py` removed |
 | S20 Typed errors (core) | Planned | |
 | S21 Scheduled ingest | Planned | |
 | S22 Scraper reliability | Planned | |

@@ -54,6 +54,7 @@ from media_sources import (  # noqa: E402
     sources_for_category,
     validate_news_sources_schema,
 )
+from runtime_env import get_cloud_light  # noqa: E402
 
 __all__ = [
     "ARTICLE_CACHE_ENABLED",
@@ -90,58 +91,7 @@ __all__ = [
 ]
 
 
-# Sidebar category labels (order is UI order). Must match NEWS_SOURCES[*].category.
-
-
-def _transformers_available() -> bool:
-    """Return True when the transformers package is importable."""
-    try:
-        import importlib.util
-
-        return importlib.util.find_spec("transformers") is not None
-    except (ImportError, ValueError):
-        return False
-
-
-def _truthy_flag(value: object) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes"}
-
-
-def get_cloud_light() -> bool:
-    """
-    Resolve light-UI mode (hide RoBERTa / emotions).
-
-    Light (stable) when:
-    * ``LIGHT_CLOUD`` env/secret is set, or
-    * ``transformers`` is missing, or
-    * ``ALLOW_HEAVY_NLP`` is not enabled (default).
-
-    Heavy models can hard-crash the Streamlit process (browser then shows
-    ``WebSocket onclose`` / ``ERR_EMPTY_RESPONSE``). Opt in with
-    ``ALLOW_HEAVY_NLP=1`` (env or Streamlit secrets).
-    """
-    if _truthy_flag(os.environ.get("LIGHT_CLOUD")):
-        return True
-    if not _transformers_available():
-        return True
-
-    allow_heavy = _truthy_flag(os.environ.get("ALLOW_HEAVY_NLP"))
-    try:
-        import streamlit as st
-
-        if _truthy_flag(st.secrets.get("LIGHT_CLOUD", "")):
-            return True
-        allow_heavy = allow_heavy or _truthy_flag(
-            st.secrets.get("ALLOW_HEAVY_NLP", ""),
-        )
-    except Exception:
-        pass
-
-    # Default: light/stable UI. Full NLP only when explicitly allowed.
-    return not allow_heavy
-
-
-# Prefer ``get_cloud_light()`` at call sites (secrets may load later).
+# Prefer ``runtime_env.get_cloud_light()`` at call sites (secrets may load later).
 
 NLP_FUNCTIONS_FULL = [
     "Вступ",

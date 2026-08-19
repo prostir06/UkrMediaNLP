@@ -47,14 +47,13 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── scraping.py             # HTTP-скрейпінг
 ├── scrapers/               # Site-specific + JSON-LD парсери
 ├── nlp/                    # NLP-модулі (без Streamlit)
-├── nlp_analysis.py         # Deprecated re-export façade (prefer nlp.*)
 ├── data/stopwords_uk.txt   # Українські стоп-слова
 ├── requirements.txt        # Повний NLP (CPU torch) + Postgres driver
 ├── requirements-cloud.txt  # Light Cloud (без torch; sqlalchemy optional)
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
 ├── .env.example            # Local compose secrets template (not for prod)
-├── tests/                  # pytest (~310 тестів)
+├── tests/                  # pytest (~369 тестів)
 ├── Dockerfile
 └── docker-compose.yml      # app + Postgres 16 (+ profiles; password from env)
 ```
