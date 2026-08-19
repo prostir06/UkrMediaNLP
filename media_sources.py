@@ -8,8 +8,6 @@ Error policy for helpers:
 * Soft-fail → empty list / ``None`` / skip entry (UI stays usable).
 * Hard-fail → ``KeyError`` from ``get_source_config`` for unknown names.
 * Schema validation never raises; it returns a problem list.
-
-HTML5 / CSS3 / StandardJS do not apply here (Python / PEP 8 only).
 """
 
 from __future__ import annotations

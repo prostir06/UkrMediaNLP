@@ -1,8 +1,6 @@
 """
 Cached data-loading layer: RSS parsing plus article scraping.
 
-HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8).
-
 ``fetch_articles`` is the pure core function (no Streamlit). The UI wraps it
 via ``cache.load_articles``. Cache and scrape failures are typed (OSError,
 sqlite3.Error, ScrapingError) so the loader can fall back instead of aborting.

@@ -1,8 +1,6 @@
 """
 Optional semantic embeddings for corpus search (no Streamlit).
 
-HTML5 / CSS3 / StandardJS do not apply — this module is pure Python (PEP 8).
-
 Design
 ------
 * Disabled by default on Streamlit Cloud (RAM / light deps). Enable with

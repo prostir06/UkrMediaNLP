@@ -42,6 +42,12 @@ desktop.ini
 # Logs
 *.log
 
+# Packaging artifacts
+*.egg-info/
+.eggs/
+dist/
+build/
+
 # Local scratch / personal notes (never commit)
 Новий Текстовий документ.txt
 Спорт.txt

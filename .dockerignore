@@ -1,4 +1,3 @@
-.git
 .github
 .gitignore
 
@@ -25,6 +24,12 @@ Thumbs.db
 .cache/
 htmlcov/
 .coverage
+coverage.xml
+.env
+.streamlit/secrets.toml
+docs/superpowers/
+.superpowers/
+.worktrees/
 
 Dockerfile
 docker-compose.yml

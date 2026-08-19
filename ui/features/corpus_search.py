@@ -1,7 +1,4 @@
-"""Corpus search feature screen (Streamlit).
-
-HTML5 / CSS3 / StandardJS do not apply — Python UI module (PEP 8).
-"""
+"""Corpus search feature screen (Streamlit)."""
 
 from __future__ import annotations
 

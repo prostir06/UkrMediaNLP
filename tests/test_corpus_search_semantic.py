@@ -1,8 +1,4 @@
-"""
-Unit tests for semantic corpus search (S18).
-
-HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8 / pytest).
-"""
+"""Unit tests for semantic corpus search (S18)."""
 
 from __future__ import annotations
 

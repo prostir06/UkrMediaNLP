@@ -1,8 +1,6 @@
 """
 Multi-source corpus helpers: dates, search, trends (no Streamlit).
 
-HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8).
-
 Typed catches (``_PANDAS_ERR``, ``_LEMMA_ERR``) recover from expected data
 problems. Unexpected failures in search/trends are wrapped as ``NLPAnalysisError``.
 """

@@ -7,10 +7,7 @@ compatibility (``from config import NEWS_SOURCES``).
 
 from __future__ import annotations
 
-import logging
 import os
-
-logger = logging.getLogger(__name__)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -54,7 +51,6 @@ from media_sources import (  # noqa: E402
     sources_for_category,
     validate_news_sources_schema,
 )
-from runtime_env import get_cloud_light  # noqa: E402
 
 __all__ = [
     "ARTICLE_CACHE_ENABLED",
@@ -83,15 +79,12 @@ __all__ = [
     "SCRAPE_MAX_WORKERS",
     "SCRAPE_SAMPLE_URLS",
     "WORDCLOUD_DESCRIPTION",
-    "get_cloud_light",
     "get_source_config",
     "source_category",
     "sources_for_category",
     "validate_news_sources_schema",
 ]
 
-
-# Prefer ``runtime_env.get_cloud_light()`` at call sites (secrets may load later).
 
 NLP_FUNCTIONS_FULL = [
     "Вступ",

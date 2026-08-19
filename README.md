@@ -53,7 +53,7 @@ Streamlit-додаток для збору новин з RSS українськ�
 ├── packages.txt            # fonts-dejavu-core для Streamlit Cloud
 ├── runtime.txt             # Python 3.12 для Streamlit Cloud
 ├── .env.example            # Local compose secrets template (not for prod)
-├── tests/                  # pytest (~369 тестів)
+├── tests/                  # pytest (~388 тестів, маркер `not slow`)
 ├── Dockerfile
 └── docker-compose.yml      # app + Postgres 16 (+ profiles; password from env)
 ```

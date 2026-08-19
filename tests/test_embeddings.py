@@ -1,8 +1,4 @@
-"""
-Unit tests for ``nlp.embeddings``.
-
-HTML5 / CSS3 / StandardJS do not apply — Python-only module (PEP 8 / pytest).
-"""
+"""Unit tests for ``nlp.embeddings``."""
 
 from __future__ import annotations
 

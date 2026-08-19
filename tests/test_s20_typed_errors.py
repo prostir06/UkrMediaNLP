@@ -1,8 +1,4 @@
-"""
-S20 unit tests: typed-error fallbacks in corpus helpers, store, and data_loader.
-
-HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8 / pytest).
-"""
+"""S20 unit tests: typed-error fallbacks in corpus helpers, store, and data_loader."""
 
 from __future__ import annotations
 

@@ -2,7 +2,6 @@
 Unit tests for durable corpus store (SQLite in-memory).
 
 Covers happy paths, soft-fail branches, and SQLAlchemy error propagation.
-HTML5 / CSS3 / StandardJS do not apply — this package is Python-only (PEP 8).
 """
 
 from __future__ import annotations
