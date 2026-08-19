@@ -54,7 +54,7 @@ def _contrast_color_func(word, font_size, position, orientation, random_state=No
         else:
             idx = int(rng.randint(0, len(_CONTRAST_PALETTE) - 1))
         return _CONTRAST_PALETTE[idx]
-    except Exception:
+    except (IndexError, TypeError, ValueError):
         return _CONTRAST_PALETTE[0]
 
 
@@ -74,7 +74,7 @@ def _resolve_font_path() -> str | None:
 
     try:
         return font_manager.findfont("DejaVu Sans", fallback_to_default=True)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         logger.debug("Matplotlib font lookup failed: %s", exc)
         return None
 
@@ -111,7 +111,7 @@ def build_wordcloud_images(
 
             nlp = resolve_spacy_nlp()
             text_list = lemmatize_texts(text_list, nlp)
-        except Exception as exc:
+        except (ImportError, OSError, TypeError, ValueError, RuntimeError) as exc:
             # spaCy may be missing in light Cloud installs — keep raw tokens.
             logger.debug("Wordcloud lemmatization skipped: %s", exc)
 
@@ -121,7 +121,7 @@ def build_wordcloud_images(
 
     try:
         stopwords = set(load_stopwords())
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         logger.warning("Stopwords load failed, continuing without them: %s", exc)
         stopwords = set()
 
@@ -145,7 +145,7 @@ def build_wordcloud_images(
                 **style_kwargs,
             ).generate(long_string)
             images.append(wordcloud.to_array())
-        except Exception as exc:
+        except (ValueError, TypeError, RuntimeError, OSError) as exc:
             # One broken style must not abort the whole render.
             logger.warning("WordCloud style failed (%s): %s", style, exc)
     return images

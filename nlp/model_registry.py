@@ -54,7 +54,7 @@ def resolve_spacy_nlp():
         from cache import get_spacy_nlp
 
         return get_spacy_nlp()
-    except Exception as exc:
+    except (ImportError, AttributeError, RuntimeError) as exc:
         # ImportError, Streamlit runtime gaps, or cache miss → local load.
         logger.debug("Falling back to process-local spaCy cache: %s", exc)
         try:
@@ -73,7 +73,7 @@ def resolve_cosmus_pipeline():
         from cache import get_cosmus_pipeline
 
         return get_cosmus_pipeline()
-    except Exception as exc:
+    except (ImportError, AttributeError, RuntimeError) as exc:
         logger.debug("Falling back to process-local COSMUS cache: %s", exc)
         try:
             return _load_cosmus_cached()
@@ -90,7 +90,7 @@ def resolve_emotions_model():
         from cache import get_emotions_model
 
         return get_emotions_model()
-    except Exception as exc:
+    except (ImportError, AttributeError, RuntimeError) as exc:
         logger.debug("Falling back to process-local emotions cache: %s", exc)
         try:
             return _load_emotions_cached()

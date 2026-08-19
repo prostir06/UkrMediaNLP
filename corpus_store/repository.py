@@ -65,7 +65,7 @@ def canonical_url_hash(url: str) -> str:
     try:
         canonical = str(url or "").strip()
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    except Exception as exc:
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
         # Extremely unlikely (encode failures); surface as empty-safe digest.
         logger.warning("canonical_url_hash failed for %r: %s", url, exc)
         return hashlib.sha256(b"").hexdigest()
@@ -92,7 +92,7 @@ def _as_utc(value: object) -> datetime | None:
         if ts.tzinfo is None:
             return ts.replace(tzinfo=timezone.utc)
         return ts
-    except Exception as exc:
+    except (TypeError, ValueError, OverflowError, AttributeError) as exc:
         logger.debug("_as_utc could not parse %r: %s", value, exc)
         return None
 
@@ -132,7 +132,7 @@ def _row_to_article_dict(row: object, scraped_at: datetime) -> dict | None:
             "scraped_at": scraped_at,
             "scraped_ok": bool(get("scraped_ok", False)),
         }
-    except Exception as exc:
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
         logger.warning("_row_to_article_dict skipped row: %s", exc)
         return None
 
@@ -157,7 +157,7 @@ def upsert_articles(session: Session, df: pd.DataFrame) -> int:
 
     try:
         work = df.copy()
-    except Exception as exc:
+    except (TypeError, AttributeError, ValueError) as exc:
         logger.warning("upsert_articles: cannot copy DataFrame: %s", exc)
         return 0
 
@@ -175,7 +175,7 @@ def upsert_articles(session: Session, df: pd.DataFrame) -> int:
             if payload is None:
                 continue
             by_hash[payload["url_hash"]] = payload
-    except Exception as exc:
+    except (TypeError, ValueError, KeyError) as exc:
         logger.exception("upsert_articles: row iteration failed: %s", exc)
         return 0
 
@@ -270,7 +270,7 @@ def load_corpus_from_store(
     except SQLAlchemyError:
         logger.exception("load_corpus_from_store: query failed")
         raise
-    except Exception as exc:
+    except (TypeError, ValueError, AttributeError) as exc:
         logger.warning("load_corpus_from_store: filter build failed: %s", exc)
         return empty
 
@@ -297,12 +297,12 @@ def load_corpus_from_store(
                     "search_blob": str(blob),
                 }
             )
-        except Exception as exc:
+        except (TypeError, ValueError, AttributeError) as exc:
             logger.warning("load_corpus_from_store: skip bad ORM row: %s", exc)
 
     try:
         return pd.DataFrame.from_records(records) if records else empty
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         logger.warning("load_corpus_from_store: DataFrame build failed: %s", exc)
         return empty
 
@@ -336,6 +336,6 @@ def purge_older_than(
     except SQLAlchemyError:
         logger.exception("purge_older_than: delete failed (days=%s)", days)
         raise
-    except Exception as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         logger.warning("purge_older_than: unexpected error: %s", exc)
         return 0

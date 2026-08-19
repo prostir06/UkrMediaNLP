@@ -6,6 +6,7 @@ via ``cache.load_articles``.
 """
 
 import logging
+import sqlite3
 import time
 
 import pandas as pd
@@ -110,7 +111,7 @@ def fetch_articles(
                 cached.attrs["max_articles"] = limit
                 cached.attrs["from_cache"] = True
                 return cached
-        except Exception as exc:
+        except (OSError, sqlite3.Error, ValueError, ImportError) as exc:
             logger.debug("Article cache unavailable: %s", exc)
 
     try:
@@ -149,7 +150,7 @@ def fetch_articles(
             )
             for index, text in scraped.items():
                 _apply_scrape_result(df, index, text)
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ScrapingError) as exc:
             # Thread-pool failures should not abort the entire load; scrape sequentially.
             logger.exception("Parallel scraping failed, falling back to sequential: %s", exc)
             total = len(links)
@@ -165,13 +166,13 @@ def fetch_articles(
                 except ScrapingError as scrape_exc:
                     logger.warning("Scraping error for %s: %s", link, scrape_exc)
                     _apply_scrape_result(df, index, "")
-                except Exception as row_exc:
+                except (OSError, ValueError, TypeError, KeyError) as row_exc:
                     logger.warning("Skipping article %s: %s", link, row_exc)
                     _apply_scrape_result(df, index, "")
                 if progress_callback is not None:
                     try:
                         progress_callback(done_idx, total)
-                    except Exception as cb_exc:
+                    except (TypeError, ValueError) as cb_exc:
                         logger.debug("Progress callback failed: %s", cb_exc)
 
     scraped_count = int(df["scraped_ok"].sum()) if len(df) else 0
@@ -209,7 +210,7 @@ def fetch_articles(
             from article_cache import make_cache_key, store_articles
 
             store_articles(make_cache_key(source_name, feed_url, limit), source_name, result)
-        except Exception as exc:
+        except (OSError, sqlite3.Error, ValueError, ImportError) as exc:
             logger.debug("Article cache store skipped: %s", exc)
 
     return result

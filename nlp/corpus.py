@@ -12,6 +12,10 @@ from exceptions import NLPAnalysisError
 
 logger = logging.getLogger(__name__)
 
+# Pandas / mapping failures we can recover from without masking programming bugs.
+_PANDAS_ERR = (TypeError, ValueError, KeyError, AttributeError, IndexError)
+_LEMMA_ERR = (NLPAnalysisError, ImportError, OSError, TypeError, ValueError, RuntimeError)
+
 
 def parse_published(value: object) -> pd.Timestamp:
     """Parse a date as timezone-naive UTC; return NaT on failure."""
@@ -40,7 +44,7 @@ def ensure_published_dt(df: pd.DataFrame) -> pd.DataFrame:
             out["published_dt"] = pd.NaT
             return out
         out["published_dt"] = source.map(parse_published)
-    except Exception as exc:
+    except _PANDAS_ERR as exc:
         logger.warning("ensure_published_dt failed: %s", exc)
         out["published_dt"] = pd.NaT
     return out
@@ -68,7 +72,7 @@ def filter_by_date(
         if include_missing:
             return work.loc[mask_ok | mask_missing].copy()
         return work.loc[mask_ok].copy()
-    except Exception as exc:
+    except _PANDAS_ERR as exc:
         logger.warning("filter_by_date failed: %s", exc)
         return work.iloc[0:0].copy()
 
@@ -80,7 +84,7 @@ def cap_corpus(df: pd.DataFrame, max_rows: int) -> pd.DataFrame:
     work = ensure_published_dt(df)
     try:
         return work.sort_values("published_dt", ascending=False, na_position="last").head(max_rows)
-    except Exception as exc:
+    except _PANDAS_ERR as exc:
         logger.warning("cap_corpus failed: %s", exc)
         return work.head(max_rows)
 
@@ -95,13 +99,13 @@ def merge_source_frames(frames: list[pd.DataFrame], max_rows: int) -> pd.DataFra
             if "source" not in part.columns:
                 part["source"] = ""
             clean.append(part)
-        except Exception as exc:
+        except _PANDAS_ERR as exc:
             logger.warning("skip bad frame: %s", exc)
     if not clean:
         return pd.DataFrame()
     try:
         merged = pd.concat(clean, ignore_index=True)
-    except Exception as exc:
+    except _PANDAS_ERR as exc:
         logger.exception("concat failed: %s", exc)
         return pd.DataFrame()
     return cap_corpus(ensure_published_dt(merged), max_rows=max_rows)
@@ -112,7 +116,7 @@ def article_search_text(row: pd.Series, fields: Iterable[str]) -> str:
     for field in fields:
         try:
             value = row.get(field, "")
-        except Exception:
+        except (AttributeError, KeyError, TypeError):
             value = ""
         text = str(value or "").strip()
         if not text and field == "content":
@@ -189,7 +193,7 @@ def ensure_lemma_blobs(df: pd.DataFrame) -> pd.DataFrame:
         titles = out["search_blob_title"].fillna("").astype(str).tolist()
         out["search_blob_lemma"] = lemmatize_texts(blobs, nlp)
         out["search_blob_title_lemma"] = lemmatize_texts(titles, nlp)
-    except Exception as exc:
+    except _LEMMA_ERR as exc:
         logger.warning("ensure_lemma_blobs failed, falling back to surface forms: %s", exc)
         out["search_blob_lemma"] = out["search_blob"]
         out["search_blob_title_lemma"] = out["search_blob_title"]
@@ -253,7 +257,7 @@ def row_matches(text: str, query: str, whole_word: bool, use_lemmas: bool = Fals
             nlp = resolve_spacy_nlp()
             hay = lemmatize_texts([text], nlp)[0].lower()
             needle = lemmatize_texts([q], nlp)[0].lower()
-        except Exception as exc:
+        except _LEMMA_ERR as exc:
             logger.debug("lemma match fallback: %s", exc)
     if whole_word:
         pattern = re.compile(rf"(?iu)\b{re.escape(needle)}\b")
@@ -287,7 +291,7 @@ def search_corpus(
                 from nlp.text_utils import lemmatize_texts
 
                 needle = lemmatize_texts([q], resolve_spacy_nlp())[0]
-            except Exception as exc:
+            except _LEMMA_ERR as exc:
                 logger.debug("query lemmatize fallback: %s", exc)
 
         blob_mask = _series_matches(work[blob_col], needle, whole_word=whole_word)
@@ -459,7 +463,7 @@ def suggest_terms(df: pd.DataFrame, n: int = 15) -> list[str]:
         contents = df.get("content", pd.Series(dtype=str)).fillna("").astype(str).str.slice(0, 200)
         corpus = (titles.fillna("") + " " + contents).tolist()
         return [word for word, _count in get_top_n_words(corpus, n=n)]
-    except Exception as exc:
+    except _LEMMA_ERR as exc:
         logger.warning("suggest_terms failed: %s", exc)
         return []
 
@@ -476,7 +480,7 @@ def suggest_lda_labels(df: pd.DataFrame, number_topics: int = 5) -> list[str]:
             re.sub(r"^\s*Тема\s+\d+\s*:\s*", "", str(label), flags=re.IGNORECASE)
             for label in (labels or [])
         ]
-    except Exception as exc:
+    except _LEMMA_ERR as exc:
         logger.warning("suggest_lda_labels soft-failed: %s", exc)
         return []
 

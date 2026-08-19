@@ -39,7 +39,7 @@ def run_topic_modeling(
 
             nlp = resolve_spacy_nlp()
             documents = lemmatize_texts(documents, nlp)
-        except Exception as exc:
+        except (NLPAnalysisError, ImportError, OSError, TypeError, ValueError, RuntimeError) as exc:
             logger.warning("LDA lemmatization skipped: %s", exc)
 
     try:

@@ -72,7 +72,7 @@ def _safe_lower(text: object) -> str:
     """Coerce arbitrary input to a lowercased string."""
     try:
         return str(text or "").lower()
-    except Exception as exc:  # pragma: no cover - extremely defensive
+    except (TypeError, ValueError) as exc:  # pragma: no cover - extremely defensive
         logger.debug("Cannot stringify headline: %s", exc)
         return ""
 
@@ -103,7 +103,7 @@ def classify_news_sentiment(text: str) -> str:
         if neg > pos:
             return "Негативна"
         return "Нейтральна"
-    except Exception as exc:
+    except (TypeError, ValueError, AttributeError) as exc:
         logger.warning("News sentiment classification failed: %s", exc)
         return "Нейтральна"
 

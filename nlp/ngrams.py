@@ -29,7 +29,7 @@ def _vectorize_ngrams(
 
             nlp = resolve_spacy_nlp()
             corpus_list = lemmatize_texts(corpus_list, nlp)
-        except Exception as exc:
+        except (ImportError, OSError, TypeError, ValueError, RuntimeError) as exc:
             logger.warning("Lemmatization skipped: %s", exc)
 
     try:

@@ -45,7 +45,7 @@ def extract_keywords(
 
             nlp = resolve_spacy_nlp()
             text_list = lemmatize_texts(text_list, nlp)
-        except Exception as exc:
+        except (ImportError, OSError, TypeError, ValueError, RuntimeError) as exc:
             logger.debug("Keyword lemmatization skipped: %s", exc)
 
     stopwords = single_token_stopwords()

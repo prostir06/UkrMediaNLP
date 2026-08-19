@@ -33,7 +33,7 @@ def is_store_configured() -> bool:
     """
     try:
         url = os.environ.get("DATABASE_URL", "").strip()
-    except Exception as exc:  # pragma: no cover - env access is rarely broken
+    except (TypeError, AttributeError) as exc:  # pragma: no cover - env access is rarely broken
         logger.warning("is_store_configured: cannot read DATABASE_URL: %s", exc)
         return False
     return bool(url)
@@ -43,7 +43,7 @@ def get_database_url() -> str | None:
     """Return configured database URL or ``None`` when the store is offline."""
     try:
         url = os.environ.get("DATABASE_URL", "").strip()
-    except Exception as exc:  # pragma: no cover
+    except (TypeError, AttributeError) as exc:  # pragma: no cover
         logger.warning("get_database_url failed: %s", exc)
         return None
     return url or None

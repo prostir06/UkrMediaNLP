@@ -40,7 +40,7 @@ def ensure_writable_hf_cache() -> None:
             os.environ["HF_HOME"] = str(fallback)
             os.environ["TRANSFORMERS_CACHE"] = str(fallback)
             os.environ["HF_HUB_CACHE"] = str(fallback)
-        except Exception as fallback_exc:
+        except (OSError, PermissionError) as fallback_exc:
             logger.warning("Failed setting fallback HF cache directory: %s", fallback_exc)
 
 
@@ -69,7 +69,7 @@ def available_ram_mb() -> int | None:
         status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             return int(status.ullAvailPhys // (1024 * 1024))
-    except Exception as exc:
+    except (OSError, AttributeError, ValueError, TypeError) as exc:
         logger.debug("Windows RAM probe failed: %s", exc)
 
     try:
@@ -77,7 +77,7 @@ def available_ram_mb() -> int | None:
             for line in handle:
                 if line.startswith("MemAvailable:"):
                     return int(line.split()[1]) // 1024
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         logger.debug("Linux RAM probe failed: %s", exc)
     return None
 
@@ -118,7 +118,7 @@ def quantize_model_if_cpu(model):
             return torch.quantization.quantize_dynamic(
                 model, {torch.nn.Linear}, dtype=torch.qint8
             )
-    except Exception as exc:
+    except (RuntimeError, AttributeError, TypeError, ValueError) as exc:
         logger.debug("CPU dynamic quantization skipped: %s", exc)
     return model
 

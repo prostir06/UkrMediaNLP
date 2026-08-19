@@ -136,7 +136,7 @@ def _coerce_text(value: object) -> str:
         if value is None:
             return ""
         return str(value)
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         logger.debug("_coerce_text failed for %r: %s", value, exc)
         return ""
 
@@ -156,7 +156,7 @@ def _hash_embed(text: str, dim: int) -> list[float]:
         for token in tokens:
             try:
                 digest = hashlib.sha256(token.encode("utf-8")).digest()
-            except Exception as exc:
+            except (TypeError, UnicodeEncodeError) as exc:
                 # Skip pathological tokens rather than failing the whole batch.
                 logger.debug("skip token hash for %r: %s", token[:32], exc)
                 continue
