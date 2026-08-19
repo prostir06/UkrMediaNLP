@@ -58,6 +58,8 @@
 |--------|--------|-------|
 | S1–S17 | Done | See post-S11 roadmap |
 | S18 Semantic search UI | Done | keyword + semantic toggle; `search_corpus_semantic` |
+
+**Next roadmap:** [`2026-08-19-post-s18-roadmap.md`](2026-08-19-post-s18-roadmap.md) (S19+).
 | S19 Import hygiene | Planned | |
 | S20 Typed errors (core) | Planned | |
 | S21 Scheduled ingest | Planned | |
