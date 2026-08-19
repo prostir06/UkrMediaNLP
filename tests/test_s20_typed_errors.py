@@ -1,4 +1,8 @@
-"""S20: typed-error fallbacks in corpus helpers, store, and data_loader."""
+"""
+S20 unit tests: typed-error fallbacks in corpus helpers, store, and data_loader.
+
+HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8 / pytest).
+"""
 
 from __future__ import annotations
 
@@ -101,3 +105,31 @@ def test_news_sentiment_typed_failure_is_neutral(monkeypatch):
         lambda _t: (_ for _ in ()).throw(TypeError("x")),
     )
     assert classify_news_sentiment("перемога") == "Нейтральна"
+
+
+def test_ensure_published_dt_typed_map_failure(monkeypatch):
+    from nlp.corpus import ensure_published_dt
+
+    df = pd.DataFrame({"published": ["2024-01-01"]})
+    monkeypatch.setattr(
+        pd.Series,
+        "map",
+        lambda *a, **k: (_ for _ in ()).throw(AttributeError("map")),
+    )
+    out = ensure_published_dt(df)
+    assert out["published_dt"].isna().all()
+
+
+def test_embeddings_coerce_none_and_text():
+    from nlp.embeddings import _coerce_text
+
+    assert _coerce_text(None) == ""
+    assert _coerce_text("Київ") == "Київ"
+
+
+def test_lemma_err_tuple_includes_runtime_error():
+    from nlp.corpus import _LEMMA_ERR
+
+    assert RuntimeError in _LEMMA_ERR
+    assert NLPAnalysisError in _LEMMA_ERR
+

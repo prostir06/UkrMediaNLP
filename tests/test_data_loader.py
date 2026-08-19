@@ -181,3 +181,27 @@ def test_fetch_articles_calls_clear_expired_on_cache_path(sample_rss_url, monkey
     df = fetch_articles("Тест", sample_rss_url, "pravda")
     assert calls["clear"] == 1
     assert df.attrs.get("from_cache") is True
+
+
+def test_fallback_content_bad_row_returns_empty():
+    class BadRow:
+        def get(self, *_a, **_k):
+            raise AttributeError("no mapping")
+
+    assert _fallback_content(BadRow()) == ""  # type: ignore[arg-type]
+
+
+def test_apply_scrape_result_bad_index_does_not_raise():
+    from data_loader import _apply_scrape_result
+
+    df = pd.DataFrame({"content": ["a"], "description": [""], "scraped_ok": [False]})
+    _apply_scrape_result(df, None, "text")  # type: ignore[arg-type]
+
+
+def test_ensure_article_columns_fills_gaps():
+    from data_loader import _ensure_article_columns
+
+    df = pd.DataFrame({"title": ["t"]})
+    out = _ensure_article_columns(df)
+    assert "link" in out.columns
+    assert bool(out["scraped_ok"].iloc[0]) is False

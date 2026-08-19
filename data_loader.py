@@ -1,8 +1,11 @@
 """
 Cached data-loading layer: RSS parsing plus article scraping.
 
+HTML5 / CSS3 / StandardJS do not apply — Python-only (PEP 8).
+
 ``fetch_articles`` is the pure core function (no Streamlit). The UI wraps it
-via ``cache.load_articles``.
+via ``cache.load_articles``. Cache and scrape failures are typed (OSError,
+sqlite3.Error, ScrapingError) so the loader can fall back instead of aborting.
 """
 
 import logging
@@ -49,7 +52,7 @@ def _apply_scrape_result(df: pd.DataFrame, index: int, scraped_text: str) -> Non
         if fallback:
             df.at[index, "content"] = fallback
         df.at[index, "scraped_ok"] = False
-    except (KeyError, IndexError) as exc:
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
         logger.warning("Cannot update row %s: %s", index, exc)
 
 
